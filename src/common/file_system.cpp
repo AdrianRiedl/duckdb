@@ -81,15 +81,15 @@ unique_ptr<FileHandle> FileSystem::OpenFile(const char *path, uint8_t flags, Fil
 	if (fd == -1) {
 		throw IOException("Cannot open file \"%s\": %s", path, strerror(errno));
 	}
-// #if defined(__DARWIN__) || defined(__APPLE__)
-// 	if (flags & FileFlags::DIRECT_IO) {
-// 		// OSX requires fcntl for Direct IO
-// 		rc = fcntl(fd, F_NOCACHE, 1);
-// 		if (fd == -1) {
-// 			throw IOException("Could not enable direct IO for file \"%s\": %s", path, strerror(errno));
-// 		}
-// 	}
-// #endif
+#if defined(__DARWIN__) || defined(__APPLE__)
+	if (flags & FileFlags::DIRECT_IO) {
+		// OSX requires fcntl for Direct IO
+		rc = fcntl(fd, F_NOCACHE, 1);
+		if (fd == -1) {
+			throw IOException("Could not enable direct IO for file \"%s\": %s", path, strerror(errno));
+		}
+	}
+#endif
 	if (lock_type != FileLockType::NO_LOCK) {
 		// set lock on file
 		struct flock fl;
@@ -140,13 +140,6 @@ int64_t FileSystem::GetFileSize(FileHandle &handle) {
 		return -1;
 	}
 	return s.st_size;
-}
-
-void FileSystem::Truncate(FileHandle &handle, int64_t new_size) {
-	int fd = ((UnixFileHandle &)handle).fd;
-	if (ftruncate(fd, new_size) != 0) {
-		throw IOException("Could not truncate file \"%s\": %s", handle.path.c_str(), strerror(errno));
-	}
 }
 
 bool FileSystem::DirectoryExists(const string &directory) {
@@ -266,7 +259,7 @@ string FileSystem::PathSeparator() {
 void FileSystem::FileSync(FileHandle &handle) {
 	int fd = ((UnixFileHandle &)handle).fd;
 	if (fsync(fd) != 0) {
-		throw FatalException("fsync failed!");
+		throw IOException("FATAL ERROR: fsync failed!");
 	}
 }
 
@@ -405,17 +398,6 @@ int64_t FileSystem::GetFileSize(FileHandle &handle) {
 		return -1;
 	}
 	return result.QuadPart;
-}
-
-void FileSystem::Truncate(FileHandle &handle, int64_t new_size) {
-	HANDLE hFile = ((WindowsFileHandle &)handle).fd;
-	// seek to the location
-	SetFilePointer(handle, new_size);
-	// now set the end of file position
-	if (!SetEndOfFile(hFile)) {
-		auto error = GetLastErrorAsString();
-		throw IOException("Failure in SetEndOfFile call on file \"%s\": %s", handle.path.c_str(), error.c_str());
-	}
 }
 
 bool FileSystem::DirectoryExists(const string &directory) {
@@ -570,8 +552,4 @@ void FileHandle::Write(void *buffer, index_t nr_bytes, index_t location) {
 
 void FileHandle::Sync() {
 	file_system.FileSync(*this);
-}
-
-void FileHandle::Truncate(int64_t new_size) {
-	file_system.Truncate(*this, new_size);
 }

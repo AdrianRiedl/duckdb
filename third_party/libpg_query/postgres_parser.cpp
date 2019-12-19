@@ -1,9 +1,11 @@
 #include "postgres_parser.hpp"
 
-#include "pg_functions.hpp"
-#include "parser/parser.hpp"
+extern "C" {
+#include "pg_functions.h"
+#include "parser/parser.h"
+}
 
-using namespace duckdb;
+using namespace postgres;
 using namespace std;
 
 PostgresParser::PostgresParser() : success(false), parse_tree(nullptr), error_message(""), error_location(0) {};

@@ -105,6 +105,7 @@ SQLType SQLTypeFromInternalType(TypeId type) {
 	case TypeId::INTEGER:
 		return SQLType::INTEGER;
 	case TypeId::BIGINT:
+	case TypeId::HASH:
 		return SQLType::BIGINT;
 	case TypeId::FLOAT:
 		return SQLType::FLOAT;

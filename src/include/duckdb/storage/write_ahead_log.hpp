@@ -16,8 +16,6 @@
 
 namespace duckdb {
 
-struct AlterInfo;
-
 class BufferedSerializer;
 class Catalog;
 class DuckDB;
@@ -45,8 +43,6 @@ public:
 
 	//! Initialize the WAL in the specified directory
 	void Initialize(string &path);
-	//! Returns the current size of the WAL in bytes
-	int64_t GetWALSize();
 
 	void WriteCreateTable(TableCatalogEntry *entry);
 	void WriteDropTable(TableCatalogEntry *entry);
@@ -64,14 +60,12 @@ public:
 	//! Sets the table used for subsequent insert/delete/update commands
 	void WriteSetTable(string &schema, string &table);
 
-	void WriteAlter(AlterInfo &info);
-
 	void WriteInsert(DataChunk &chunk);
 	void WriteDelete(DataChunk &chunk);
 	void WriteUpdate(DataChunk &chunk, column_t col_idx);
 
-	//! Truncate the WAL to a previous size, and clear anything currently set in the writer
-	void Truncate(int64_t size);
+	void WriteQuery(string &query);
+
 	void Flush();
 
 private:

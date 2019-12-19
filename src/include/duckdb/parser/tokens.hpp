@@ -29,9 +29,8 @@ class TransactionStatement;
 class UpdateStatement;
 class PrepareStatement;
 class ExecuteStatement;
+class DeallocateStatement;
 class CreateSequenceStatement;
-class PragmaStatement;
-class ExplainStatement;
 
 //===--------------------------------------------------------------------===//
 // Query Node
@@ -79,6 +78,5 @@ class JoinRef;
 class SubqueryRef;
 class TableFunctionRef;
 class EmptyTableRef;
-class ExpressionListRef;
 
 } // namespace duckdb

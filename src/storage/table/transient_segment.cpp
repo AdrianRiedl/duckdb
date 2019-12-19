@@ -4,7 +4,6 @@
 #include "duckdb/common/vector_operations/vector_operations.hpp"
 #include "duckdb/storage/numeric_segment.hpp"
 #include "duckdb/storage/string_segment.hpp"
-#include "duckdb/storage/table/append_state.hpp"
 
 using namespace duckdb;
 using namespace std;
@@ -50,9 +49,4 @@ index_t TransientSegment::Append(ColumnAppendState &state, Vector &append_data, 
 	index_t appended = data->Append(stats, append_data, offset, count);
 	this->count += appended;
 	return appended;
-}
-
-void TransientSegment::RevertAppend(index_t start_row) {
-	data->tuple_count = start_row - this->start;
-	this->count = start_row - this->start;
 }

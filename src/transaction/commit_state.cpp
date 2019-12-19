@@ -1,12 +1,8 @@
 #include "duckdb/transaction/commit_state.hpp"
-#include "duckdb/transaction/delete_info.hpp"
-#include "duckdb/transaction/update_info.hpp"
 
 #include "duckdb/storage/data_table.hpp"
 #include "duckdb/storage/write_ahead_log.hpp"
 #include "duckdb/storage/uncompressed_segment.hpp"
-#include "duckdb/common/serializer/buffered_deserializer.hpp"
-#include "duckdb/parser/parsed_data/alter_table_info.hpp"
 
 using namespace duckdb;
 using namespace std;
@@ -23,28 +19,20 @@ void CommitState::SwitchTable(DataTable *table, UndoFlags new_op) {
 	}
 }
 
-void CommitState::WriteCatalogEntry(CatalogEntry *entry, data_ptr_t dataptr) {
+void CommitState::WriteCatalogEntry(CatalogEntry *entry) {
 	assert(log);
 	// look at the type of the parent entry
 	auto parent = entry->parent;
 	switch (parent->type) {
 	case CatalogType::TABLE:
+		if (entry->type == CatalogType::TABLE) {
+			// ALTER TABLE statement, skip it
+			return;
+		}
 		if (parent->temporary) {
 			return;
 		}
-		if (entry->type == CatalogType::TABLE) {
-			// ALTER TABLE statement, read the extra data after the entry
-			auto extra_data_size = *((index_t*) dataptr);
-			auto extra_data = (data_ptr_t) (dataptr + sizeof(index_t));
-			// deserialize it
-			BufferedDeserializer source(extra_data, extra_data_size);
-			auto info = AlterInfo::Deserialize(source);
-			// write the alter table in the log
-			log->WriteAlter(*info);
-		} else {
-			// CREATE TABLE statement
-			log->WriteCreateTable((TableCatalogEntry *)parent);
-		}
+		log->WriteCreateTable((TableCatalogEntry *)parent);
 		break;
 	case CatalogType::SCHEMA:
 		if (entry->type == CatalogType::SCHEMA) {
@@ -144,7 +132,7 @@ template <bool HAS_LOG> void CommitState::CommitEntry(UndoFlags type, data_ptr_t
 
 		if (HAS_LOG) {
 			// push the catalog update to the WAL
-			WriteCatalogEntry(catalog_entry, data + sizeof(CatalogEntry*));
+			WriteCatalogEntry(catalog_entry);
 		}
 		break;
 	}
@@ -168,44 +156,17 @@ template <bool HAS_LOG> void CommitState::CommitEntry(UndoFlags type, data_ptr_t
 		info->version_number = commit_id;
 		break;
 	}
+	case UndoFlags::QUERY: {
+		if (HAS_LOG) {
+			string query = string((char *)data);
+			log->WriteQuery(query);
+		}
+		break;
+	}
 	case UndoFlags::DATA:
 		break;
 	default:
 		throw NotImplementedException("UndoBuffer - don't know how to commit this type!");
-	}
-}
-
-void CommitState::RevertCommit(UndoFlags type, data_ptr_t data) {
-	transaction_t transaction_id = commit_id;
-	switch (type) {
-	case UndoFlags::CATALOG_ENTRY: {
-		// set the commit timestamp of the catalog entry to the given id
-		CatalogEntry *catalog_entry = *((CatalogEntry **)data);
-		assert(catalog_entry->parent);
-		catalog_entry->parent->timestamp = transaction_id;
-		break;
-	}
-	case UndoFlags::DELETE_TUPLE: {
-		// deletion:
-		auto info = (DeleteInfo *)data;
-		info->GetTable().cardinality += info->count;
-		// revert the commit by writing the (uncommitted) transaction_id back into the version info
-		info->vinfo->CommitDelete(transaction_id, info->rows, info->count);
-		break;
-	}
-	case UndoFlags::UPDATE_TUPLE: {
-		// update:
-		auto info = (UpdateInfo *)data;
-		info->version_number = transaction_id;
-		break;
-	}
-	case UndoFlags::QUERY: {
-		break;
-	}
-	case UndoFlags::DATA:
-		break;
-	default:
-		throw NotImplementedException("UndoBuffer - don't know how to revert commit of this type!");
 	}
 }
 

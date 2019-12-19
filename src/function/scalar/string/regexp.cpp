@@ -6,6 +6,7 @@
 
 #include "re2/re2.h"
 
+using namespace re2;
 using namespace std;
 
 namespace duckdb {

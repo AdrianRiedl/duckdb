@@ -2,6 +2,7 @@
 #include "duckdb/execution/operator/join/physical_hash_join.hpp"
 #include "duckdb/execution/operator/join/physical_nested_loop_join.hpp"
 #include "duckdb/execution/operator/join/physical_piecewise_merge_join.hpp"
+#include "duckdb/execution/operator/join/physical_radix_join.hpp"
 #include "duckdb/execution/physical_plan_generator.hpp"
 #include "duckdb/planner/operator/logical_comparison_join.hpp"
 
@@ -39,7 +40,11 @@ unique_ptr<PhysicalOperator> PhysicalPlanGenerator::CreatePlan(LogicalComparison
 	unique_ptr<PhysicalOperator> plan;
 	if (has_equality) {
 		// equality join: use hash join
-		plan = make_unique<PhysicalHashJoin>(op, move(left), move(right), move(op.conditions), op.type);
+#if RADIX_JOIN_EX
+		plan = make_unique<PhysicalRadixJoin>(op, move(left), move(right), move(op.conditions), op.type);
+#else
+        plan = make_unique<PhysicalHashJoin>(op, move(left), move(right), move(op.conditions), op.type);
+#endif
 	} else {
 		assert(!has_null_equal_conditions); // don't support this for anything but hash joins for now
 		if (op.conditions.size() == 1 && (op.type == JoinType::MARK || op.type == JoinType::INNER) && !has_inequality) {

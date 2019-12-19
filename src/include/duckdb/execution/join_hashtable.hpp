@@ -63,6 +63,8 @@ public:
 		void NextMarkJoin(DataChunk &keys, DataChunk &left, DataChunk &result);
 		//! Next operator for the single join
 		void NextSingleJoin(DataChunk &keys, DataChunk &left, DataChunk &result);
+		//! Next operator for the radix join
+        void NextRadixJoin(DataChunk &keys, DataChunk &left, DataChunk &result);
 
 		//! Scan the hashtable for matches of the specified keys, setting the found_match[] array to true or false for
 		//! every tuple
@@ -74,7 +76,9 @@ public:
 		void ResolvePredicates(DataChunk &keys, Vector &comparison_result);
 	};
 
-private:
+    void Hash(DataChunk &keys, Vector &hashes);
+
+    private:
 	//! Nodes store the actual data of the tuples inside the HT as a linked list
 	struct Node {
 		index_t count;
@@ -96,9 +100,7 @@ private:
 		}
 	};
 
-	void Hash(DataChunk &keys, Vector &hashes);
-
-public:
+    public:
 	JoinHashTable(vector<JoinCondition> &conditions, vector<TypeId> build_types, JoinType type,
 	              index_t initial_capacity = 32768, bool parallel = false);
 	//! Resize the HT to the specified size. Must be larger than the current

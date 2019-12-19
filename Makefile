@@ -24,12 +24,11 @@ debug:
 release:
 	mkdir -p build/release && \
 	cd build/release && \
-	cmake $(GENERATOR) $(FORCE_COLOR) -DCMAKE_BUILD_TYPE=Release ../.. && \
+	cmake $(GENERATOR) $(FORCE_COLOR) -DCMAKE_BUILD_TYPE=RelWithDebInfo ../.. && \
 	cmake --build .
 
 unittest: debug
 	build/debug/test/unittest
-	build/debug/tools/sqlite3_api_wrapper/test_sqlite3_api_wrapper
 
 allunit: release # uses release build because otherwise allunit takes forever
 	build/release/test/unittest "*"
@@ -41,18 +40,8 @@ docs:
 doxygen: docs
 	open build/docs/html/index.html
 
-amalgamation:
-	mkdir -p build/amalgamation && \
-	python scripts/amalgamation.py && \
-	cd build/amalgamation && \
-	cmake $(GENERATOR) $(FORCE_COLOR) -DAMALGAMATION_BUILD=1 -DCMAKE_BUILD_TYPE=Release ../.. && \
-	cmake --build .
-
-test_compile: # test compilation of individual cpp files
-	python scripts/amalgamation.py --compile
-
 format:
-	python scripts/format.py
+	python format.py
 
 third_party/sqllogictest:
 	git clone --depth=1 https://github.com/cwida/sqllogictest.git third_party/sqllogictest

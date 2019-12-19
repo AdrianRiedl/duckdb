@@ -54,8 +54,7 @@ enum class ExceptionType {
 	OPTIMIZER = 26,       // optimizer related
 	NULL_POINTER = 27,    // nullptr exception
 	IO = 28,              // IO exception
-	INTERRUPT = 29,       // interrupt
-	FATAL = 30   // Fatal exception: fatal exceptions are non-recoverable, and render the entire DB in an unusable state
+	INTERRUPT = 29        // interrupt
 };
 
 class Exception : public std::exception {
@@ -80,27 +79,6 @@ private:
 //===--------------------------------------------------------------------===//
 // Exception derived classes
 //===--------------------------------------------------------------------===//
-
-//! Exceptions that are StandardExceptions do NOT invalidate the current transaction when thrown
-class StandardException : public Exception {
-public:
-	StandardException(ExceptionType exception_type, string message) : Exception(exception_type, message) {}
-};
-
-class CatalogException : public StandardException {
-public:
-	CatalogException(string msg, ...);
-};
-
-class ParserException : public StandardException {
-public:
-	ParserException(string msg, ...);
-};
-
-class BinderException : public StandardException {
-public:
-	BinderException(string msg, ...);
-};
 
 class CastException : public Exception {
 public:
@@ -144,6 +122,16 @@ public:
 	OutOfRangeException(string msg, ...);
 };
 
+class CatalogException : public Exception {
+public:
+	CatalogException(string msg, ...);
+};
+
+class ParserException : public Exception {
+public:
+	ParserException(string msg, ...);
+};
+
 class SyntaxException : public Exception {
 public:
 	SyntaxException(string msg, ...);
@@ -152,6 +140,11 @@ public:
 class ConstraintException : public Exception {
 public:
 	ConstraintException(string msg, ...);
+};
+
+class BinderException : public Exception {
+public:
+	BinderException(string msg, ...);
 };
 
 class IOException : public Exception {
@@ -172,11 +165,6 @@ public:
 class InterruptException : public Exception {
 public:
 	InterruptException();
-};
-
-class FatalException : public Exception {
-public:
-	FatalException(string msg, ...);
 };
 
 } // namespace duckdb

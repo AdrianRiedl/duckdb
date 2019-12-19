@@ -21,7 +21,8 @@ struct GatherLoopSetNull {
 				if (IsNullValue<T>(source[i][0])) {
 					result.nullmask.set(result.sel_vector[k]);
 				} else {
-					ldata[result.sel_vector[k]] = OP::Operation(source[i][0], ldata[i]);
+					ldata[result.sel_vector[k]] =
+					        OP::Operation(source[i][0], ldata[i]);
 				}
 			});
 		} else {

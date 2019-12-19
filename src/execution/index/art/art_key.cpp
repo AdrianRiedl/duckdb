@@ -1,5 +1,3 @@
-#include <cfloat>
-#include <limits.h>
 #include "duckdb/execution/index/art/art_key.hpp"
 #include "duckdb/execution/index/art/art.hpp"
 
@@ -21,67 +19,6 @@ using namespace duckdb;
 static uint8_t FlipSign(uint8_t key_byte) {
 	return key_byte ^ 128;
 }
-
-uint32_t Key::EncodeFloat(float x)
-{
-    unsigned long buff;
-
-    //! zero
-    if (x == 0)
-    {
-        buff = 0;
-        buff |= (1u<<31);
-        return buff;
-    }
-    //! infinity
-    if (x > FLT_MAX)
-    {
-        return UINT_MAX;
-    }
-    //! -infinity
-    if (x < -FLT_MAX)
-    {
-        return 0;
-    }
-    buff = reinterpret_cast<uint32_t*>(&x)[0];
-    if ((buff & (1u<<31)) == 0){ //! +0 and positive numbers
-        buff |= (1u<<31);
-    } else { //! negative numbers
-        buff = ~buff; //! complement 1
-    }
-
-    return buff;
-}
-
-
-uint64_t  Key::EncodeDouble(double x) {
-    uint64_t buff;
-    //! zero
-    if (x == 0)
-    {
-        buff = 0;
-        buff += (1ull<<63);
-        return buff;
-    }
-    //! infinity
-    if (x > DBL_MAX)
-    {
-        return ULLONG_MAX;
-    }
-    //! -infinity
-    if (x < -DBL_MAX)
-    {
-        return 0;
-    }
-    buff = reinterpret_cast<uint64_t*>(&x)[0];
-    if (buff < (1ull<<63)){ //! +0 and positive numbers
-        buff += (1ull<<63);
-    } else { //! negative numbers
-        buff = ~buff; //! complement 1
-    }
-    return buff;
-}
-
 
 Key::Key(unique_ptr<data_t[]> data, index_t len) : len(len), data(move(data)) {
 }
@@ -114,21 +51,6 @@ template <> unique_ptr<data_t[]> Key::CreateData(int64_t value, bool is_little_e
 	return data;
 }
 
-template <> unique_ptr<data_t[]> Key::CreateData(float value, bool is_little_endian) {
-    uint32_t converted_value = EncodeFloat(value);
-    auto data = unique_ptr<data_t[]>(new data_t[sizeof(converted_value)]);
-    reinterpret_cast<uint32_t *>(data.get())[0] = is_little_endian ? BSWAP32(converted_value) : converted_value;
-    return data;
-}
-template <> unique_ptr<data_t[]> Key::CreateData(double value, bool is_little_endian) {
-    uint64_t converted_value = EncodeDouble(value);
-    auto data = unique_ptr<data_t[]>(new data_t[sizeof(converted_value)]);
-    reinterpret_cast<uint64_t *>(data.get())[0] = is_little_endian ? BSWAP64(converted_value) : converted_value;
-    return data;
-}
-
-
-
 template <> unique_ptr<Key> Key::CreateKey(string value, bool is_little_endian) {
 	index_t len = value.size() + 1;
 	auto data = unique_ptr<data_t[]>(new data_t[len]);
@@ -145,17 +67,6 @@ bool Key::operator>(const Key &k) const {
 		}
 	}
 	return len > k.len;
-}
-
-bool Key::operator<(const Key &k) const {
-    for (index_t i = 0; i < std::min(len, k.len); i++) {
-        if (data[i] < k.data[i]) {
-            return true;
-        } else if (data[i] > k.data[i]) {
-            return false;
-        }
-    }
-    return len < k.len;
 }
 
 bool Key::operator>=(const Key &k) const {

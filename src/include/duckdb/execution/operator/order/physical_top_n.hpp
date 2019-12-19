@@ -34,4 +34,14 @@ public:
 	void CalculateHeapSize(index_t rows);
 };
 
+class PhysicalTopNOperatorState : public PhysicalOperatorState {
+public:
+	PhysicalTopNOperatorState(PhysicalOperator *child) : PhysicalOperatorState(child), position(0) {
+	}
+
+	index_t position;
+	index_t current_offset;
+	ChunkCollection sorted_data;
+	unique_ptr<index_t[]> heap;
+};
 } // namespace duckdb

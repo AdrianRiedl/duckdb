@@ -18,12 +18,7 @@ class TransactionManager;
 class ConnectionManager;
 class FileSystem;
 
-enum class AccessMode : uint8_t {
-	UNDEFINED = 0,
-	AUTOMATIC = 1,
-	READ_ONLY = 2,
-	READ_WRITE = 3
-};
+enum AccessMode { UNDEFINED, READ_ONLY, READ_WRITE }; // TODO AUTOMATIC
 
 // this is optional and only used in tests at the moment
 struct DBConfig {
@@ -33,8 +28,8 @@ struct DBConfig {
 public:
 	~DBConfig();
 
-	//! Access mode of the database (AUTOMATIC, READ_ONLY or READ_WRITE)
-	AccessMode access_mode = AccessMode::AUTOMATIC;
+	//! Access mode of the database (READ_ONLY or READ_WRITE)
+	AccessMode access_mode = AccessMode::UNDEFINED;
 	// Checkpoint when WAL reaches this size
 	index_t checkpoint_wal_size = 1 << 20;
 	//! Whether or not to use Direct IO, bypassing operating system buffers

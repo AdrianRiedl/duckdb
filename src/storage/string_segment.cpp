@@ -1,8 +1,9 @@
 #include "duckdb/storage/string_segment.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
-#include "duckdb/storage/numeric_segment.hpp"
+// #include "duckdb/common/types/vector.hpp"
+// #include "duckdb/storage/table/append_state.hpp"
 #include "duckdb/transaction/update_info.hpp"
-#include "duckdb/common/vector_operations/vector_operations.hpp"
+// #include "duckdb/transaction/transaction.hpp"
 
 using namespace duckdb;
 using namespace std;
@@ -569,6 +570,7 @@ void StringSegment::MergeUpdateInfo(UpdateInfo *node, Vector &update, row_t *ids
 	// first we copy the old update info into a temporary structure
 	sel_t old_ids[STANDARD_VECTOR_SIZE];
 	string_location_t old_data[STANDARD_VECTOR_SIZE];
+	string_location_t stored_data[STANDARD_VECTOR_SIZE];
 
 	memcpy(old_ids, node->tuples, node->N * sizeof(sel_t));
 	memcpy(old_data, node->tuple_data, node->N * sizeof(string_location_t));

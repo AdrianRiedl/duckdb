@@ -11,7 +11,6 @@
 #include "duckdb/execution/physical_operator.hpp"
 
 namespace duckdb {
-class DataTable;
 
 //! Physically update data in a table
 class PhysicalUpdate : public PhysicalOperator {

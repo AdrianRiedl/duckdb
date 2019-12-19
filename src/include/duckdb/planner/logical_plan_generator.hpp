@@ -37,8 +37,6 @@ private:
 	unique_ptr<LogicalOperator> CreatePlan(BoundCreateTableStatement &statement);
 	unique_ptr<LogicalOperator> CreatePlan(BoundCreateIndexStatement &statement);
 	unique_ptr<LogicalOperator> CreatePlan(BoundExecuteStatement &statement);
-	unique_ptr<LogicalOperator> CreatePlan(BoundSimpleStatement &statement);
-	unique_ptr<LogicalOperator> CreatePlan(BoundExplainStatement &stmt);
 
 	unique_ptr<LogicalOperator> CreatePlan(BoundSelectNode &node);
 	unique_ptr<LogicalOperator> CreatePlan(BoundSetOperationNode &node);
@@ -53,7 +51,6 @@ private:
 	unique_ptr<LogicalOperator> CreatePlan(BoundSubqueryRef &ref);
 	unique_ptr<LogicalOperator> CreatePlan(BoundTableFunction &ref);
 	unique_ptr<LogicalOperator> CreatePlan(BoundEmptyTableRef &ref);
-	unique_ptr<LogicalOperator> CreatePlan(BoundExpressionListRef &ref);
 
 	void PlanSubqueries(unique_ptr<Expression> *expr, unique_ptr<LogicalOperator> *root);
 

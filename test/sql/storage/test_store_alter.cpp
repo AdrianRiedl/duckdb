@@ -31,12 +31,18 @@ TEST_CASE("Test storage of alter table", "[storage]") {
 		}
 	}
 	// reload the database from disk
-	for(index_t i = 0; i < 2; i++) {
+	{
 		DuckDB db(storage_database, config.get());
 		Connection con(db);
 		result = con.Query("SELECT k FROM test ORDER BY k");
 		REQUIRE(CHECK_COLUMN(result, 0, {11, 12, 13}));
-		REQUIRE_FAIL(con.Query("SELECT a FROM test"));
+	}
+	// reload the database from disk
+	{
+		DuckDB db(storage_database, config.get());
+		Connection con(db);
+		result = con.Query("SELECT k FROM test ORDER BY k");
+		REQUIRE(CHECK_COLUMN(result, 0, {11, 12, 13}));
 	}
 	DeleteDatabase(storage_database);
 }

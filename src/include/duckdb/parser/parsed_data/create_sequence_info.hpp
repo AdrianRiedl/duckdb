@@ -8,18 +8,13 @@
 
 #pragma once
 
-#include "duckdb/parser/parsed_data/parse_info.hpp"
+#include "duckdb/common/common.hpp"
 
 #include <limits>
 
 namespace duckdb {
 
-struct CreateSequenceInfo : public ParseInfo {
-	CreateSequenceInfo()
-	    : schema(DEFAULT_SCHEMA), name(string()), usage_count(0), increment(1), min_value(1),
-	      max_value(std::numeric_limits<int64_t>::max()), start_value(1), cycle(false), temporary(false) {
-	}
-
+struct CreateSequenceInfo {
 	//! The schema to store the sequence in
 	string schema;
 	//! Sequence name to create
@@ -40,6 +35,11 @@ struct CreateSequenceInfo : public ParseInfo {
 	bool temporary;
 	//! Whether or not to ignore errors on duplicate creation
 	bool if_not_exists;
+
+	CreateSequenceInfo()
+	    : schema(DEFAULT_SCHEMA), name(string()), usage_count(0), increment(1), min_value(1),
+	      max_value(std::numeric_limits<int64_t>::max()), start_value(1), cycle(false), temporary(false) {
+	}
 };
 
 } // namespace duckdb

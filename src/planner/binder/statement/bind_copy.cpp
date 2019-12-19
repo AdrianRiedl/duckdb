@@ -7,6 +7,8 @@
 using namespace duckdb;
 using namespace std;
 
+// void transformColumnList(){}
+
 unique_ptr<BoundSQLStatement> Binder::Bind(CopyStatement &stmt) {
 	auto result = make_unique<BoundCopyStatement>();
 

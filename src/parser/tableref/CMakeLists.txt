@@ -3,7 +3,6 @@ add_library_unity(duckdb_parser_tableref
                   basetableref.cpp
                   crossproductref.cpp
                   emptytableref.cpp
-                  expressionlistref.cpp
                   joinref.cpp
                   subqueryref.cpp
                   table_function.cpp)

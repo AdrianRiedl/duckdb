@@ -8,15 +8,19 @@
 
 #pragma once
 
+#include "duckdb/parser/parsed_expression.hpp"
 #include "duckdb/parser/sql_statement.hpp"
-#include "duckdb/parser/parsed_data/transaction_info.hpp"
+
+#include <vector>
 
 namespace duckdb {
 
+enum class TransactionType : uint8_t { INVALID, BEGIN_TRANSACTION, COMMIT, ROLLBACK };
+
 class TransactionStatement : public SQLStatement {
 public:
-	TransactionStatement(TransactionType type) : SQLStatement(StatementType::TRANSACTION), info(make_unique<TransactionInfo>(type)) {};
+	TransactionStatement(TransactionType type) : SQLStatement(StatementType::TRANSACTION), type(type){};
 
-	unique_ptr<TransactionInfo> info;
+	TransactionType type;
 };
 } // namespace duckdb

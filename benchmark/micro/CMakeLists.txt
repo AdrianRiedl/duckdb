@@ -8,6 +8,7 @@ add_library(duckdb_benchmark_micro OBJECT
             orderby.cpp
             pointquery.cpp
             indexcreation.cpp
+            radixjoin.cpp
             rangejoin.cpp
             rangequery.cpp
             window.cpp

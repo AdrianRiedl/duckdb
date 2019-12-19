@@ -7,7 +7,6 @@ add_library(duckdb_main OBJECT
             duckdb-c.cpp
             materialized_query_result.cpp
             prepared_statement.cpp
-            prepared_statement_data.cpp
             query_profiler.cpp
             query_result.cpp
             stream_query_result.cpp)

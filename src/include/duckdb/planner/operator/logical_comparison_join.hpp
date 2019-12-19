@@ -12,6 +12,7 @@
 #include "duckdb/common/unordered_set.hpp"
 #include "duckdb/planner/joinside.hpp"
 #include "duckdb/planner/operator/logical_join.hpp"
+#define RADIX_JOIN_EX 1
 
 namespace duckdb {
 

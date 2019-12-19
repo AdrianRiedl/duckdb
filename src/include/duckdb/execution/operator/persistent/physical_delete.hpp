@@ -11,7 +11,6 @@
 #include "duckdb/execution/physical_operator.hpp"
 
 namespace duckdb {
-class DataTable;
 
 //! Physically delete data from a table
 class PhysicalDelete : public PhysicalOperator {

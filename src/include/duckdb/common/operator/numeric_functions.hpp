@@ -8,8 +8,6 @@
 
 #pragma once
 
-#include "duckdb/common/constants.hpp"
-#include "duckdb/common/exception.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -27,7 +25,7 @@ struct Round {
 			precision = 0;
 		}
 		T modifier = pow(10, precision);
-		return (round(input * modifier)) / modifier;
+		return ((int64_t)(input * modifier)) / modifier;
 	}
 };
 

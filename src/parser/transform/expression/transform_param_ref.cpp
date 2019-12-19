@@ -4,7 +4,7 @@
 using namespace duckdb;
 using namespace std;
 
-unique_ptr<ParsedExpression> Transformer::TransformParamRef(PGParamRef *node) {
+unique_ptr<ParsedExpression> Transformer::TransformParamRef(postgres::ParamRef *node) {
 	if (!node) {
 		return nullptr;
 	}

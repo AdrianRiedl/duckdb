@@ -9,17 +9,35 @@
 #pragma once
 
 #include "duckdb/catalog/catalog_entry.hpp"
-#include "duckdb/main/prepared_statement_data.hpp"
+#include "duckdb/common/unordered_map.hpp"
+#include "duckdb/common/unordered_set.hpp"
+#include "duckdb/execution/physical_operator.hpp"
 
 namespace duckdb {
+
+class BoundParameterExpression;
+class PhysicalOperator;
+class TableCatalogEntry;
+
+struct PreparedValueEntry {
+	unique_ptr<Value> value;
+	SQLType target_type;
+};
 
 //! A view catalog entry
 class PreparedStatementCatalogEntry : public CatalogEntry {
 public:
-	PreparedStatementCatalogEntry(string name, unique_ptr<PreparedStatementData> prepared_data)
-	    : CatalogEntry(CatalogType::PREPARED_STATEMENT, nullptr, name), prepared(move(prepared_data)) {
+	PreparedStatementCatalogEntry(string name, StatementType statement_type)
+	    : CatalogEntry(CatalogType::PREPARED_STATEMENT, nullptr, name), statement_type(statement_type) {
 	}
 
-	unique_ptr<PreparedStatementData> prepared;
+	unique_ptr<PhysicalOperator> plan;
+	unordered_map<index_t, PreparedValueEntry> value_map;
+	unordered_set<TableCatalogEntry *> tables;
+
+	vector<string> names;
+	vector<TypeId> types;
+	vector<SQLType> sql_types;
+	StatementType statement_type;
 };
 } // namespace duckdb

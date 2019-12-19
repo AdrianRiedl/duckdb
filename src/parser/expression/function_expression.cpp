@@ -32,9 +32,12 @@ string FunctionExpression::ToString() const {
 	}
 	// standard function call
 	string result = function_name + "(";
-	result += StringUtil::Join(children, children.size(), ", ", [](const unique_ptr<ParsedExpression>& child){
-		return child->ToString();
-	});
+	for (index_t i = 0; i < children.size(); i++) {
+		if (i != 0) {
+			result += ", ";
+		}
+		result += children[i]->ToString();
+	}
 	return result + ")";
 }
 

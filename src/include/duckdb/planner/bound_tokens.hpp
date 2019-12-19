@@ -20,11 +20,9 @@ class BoundCreateIndexStatement;
 class BoundCreateTableStatement;
 class BoundDeleteStatement;
 class BoundExecuteStatement;
-class BoundExplainStatement;
 class BoundInsertStatement;
 class BoundSelectStatement;
 class BoundUpdateStatement;
-class BoundSimpleStatement;
 
 //===--------------------------------------------------------------------===//
 // Query Node
@@ -65,6 +63,5 @@ class BoundJoinRef;
 class BoundSubqueryRef;
 class BoundTableFunction;
 class BoundEmptyTableRef;
-class BoundExpressionListRef;
 
 } // namespace duckdb

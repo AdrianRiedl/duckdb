@@ -31,4 +31,15 @@ public:
 	unique_ptr<PhysicalOperatorState> GetOperatorState() override;
 };
 
+class PhysicalCopyFromFileOperatorState : public PhysicalOperatorState {
+public:
+	PhysicalCopyFromFileOperatorState();
+	~PhysicalCopyFromFileOperatorState();
+
+	//! The istream to read from
+	unique_ptr<std::istream> csv_stream;
+	//! The CSV reader
+	unique_ptr<BufferedCSVReader> csv_reader;
+};
+
 } // namespace duckdb

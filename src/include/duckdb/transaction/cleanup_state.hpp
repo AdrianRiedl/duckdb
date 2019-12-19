@@ -9,10 +9,8 @@
 #pragma once
 
 #include "duckdb/transaction/undo_buffer.hpp"
-#include "duckdb/common/types/data_chunk.hpp"
 
 namespace duckdb {
-class DataTable;
 
 struct DeleteInfo;
 struct UpdateInfo;

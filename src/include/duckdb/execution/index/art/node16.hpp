@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #pragma once
-#include "duckdb/execution/index/art/node.hpp"
+#include "node.hpp"
 
 namespace duckdb {
 
@@ -28,8 +28,6 @@ public:
 	index_t GetNextPos(index_t pos) override;
 	//! Get Node16 Child
 	unique_ptr<Node> *GetChild(index_t pos) override;
-
-	index_t GetMin() override;
 
 	//! Insert node into Node16
 	static void insert(ART &art, unique_ptr<Node> &node, uint8_t keyByte, unique_ptr<Node> &child);

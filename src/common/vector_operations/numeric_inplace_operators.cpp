@@ -10,8 +10,6 @@
 #include "duckdb/common/vector_operations/inplace_loops.hpp"
 #include "duckdb/common/vector_operations/vector_operations.hpp"
 
-#include <algorithm>
-
 using namespace duckdb;
 using namespace std;
 

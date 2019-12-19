@@ -11,7 +11,6 @@
 #include "duckdb/storage/block.hpp"
 #include "duckdb/storage/table/segment_tree.hpp"
 #include "duckdb/common/types.hpp"
-#include "duckdb/common/types/vector.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
 
 namespace duckdb {

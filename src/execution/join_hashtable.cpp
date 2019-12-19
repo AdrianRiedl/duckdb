@@ -341,6 +341,7 @@ unique_ptr<ScanStructure> JoinHashTable::Probe(DataChunk &keys) {
 	case JoinType::MARK:
 		// initialize all tuples with found_match to false
 		memset(ss->found_match, 0, sizeof(ss->found_match));
+	case JoinType::RADIX:
 	case JoinType::INNER: {
 		// create the selection vector linking to only non-empty entries
 		index_t count = 0;
@@ -390,6 +391,9 @@ void ScanStructure::Next(DataChunk &keys, DataChunk &left, DataChunk &result) {
 		break;
 	case JoinType::SINGLE:
 		NextSingleJoin(keys, left, result);
+		break;
+	case JoinType::RADIX:
+		NextRadixJoin(keys, left, result);
 		break;
 	default:
 		throw Exception("Unhandled join type in JoinHashTable");
@@ -803,4 +807,9 @@ void ScanStructure::NextSingleJoin(DataChunk &keys, DataChunk &left, DataChunk &
 	}
 	// like the SEMI, ANTI and MARK join types, the SINGLE join only ever does one pass over the HT per input chunk
 	finished = true;
+}
+
+void ScanStructure::NextRadixJoin(DataChunk &keys, DataChunk &left, DataChunk &result) {
+    NextInnerJoin(keys, left, result);
+    //throw "not implememnted NextRadixJOin";
 }

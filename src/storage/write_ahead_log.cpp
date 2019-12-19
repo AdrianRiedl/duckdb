@@ -1,9 +1,5 @@
 #include "duckdb/storage/write_ahead_log.hpp"
-#include "duckdb/main/database.hpp"
-#include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
-#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
-#include "duckdb/catalog/catalog_entry/view_catalog_entry.hpp"
-#include "duckdb/parser/parsed_data/alter_table_info.hpp"
+
 #include <cstring>
 
 using namespace duckdb;
@@ -17,13 +13,6 @@ void WriteAheadLog::Initialize(string &path) {
 	initialized = true;
 }
 
-int64_t WriteAheadLog::GetWALSize() {
-	return writer->GetFileSize();
-}
-
-void WriteAheadLog::Truncate(int64_t size) {
-	writer->Truncate(size);
-}
 //===--------------------------------------------------------------------===//
 // Write Entries
 //===--------------------------------------------------------------------===//
@@ -132,11 +121,11 @@ void WriteAheadLog::WriteUpdate(DataChunk &chunk, column_t col_idx) {
 }
 
 //===--------------------------------------------------------------------===//
-// Write ALTER Statement
+// QUERY
 //===--------------------------------------------------------------------===//
-void WriteAheadLog::WriteAlter(AlterInfo &info) {
-	writer->Write<WALType>(WALType::ALTER_INFO);
-	info.Serialize(*writer);
+void WriteAheadLog::WriteQuery(string &query) {
+	writer->Write<WALType>(WALType::QUERY);
+	writer->WriteString(query);
 }
 
 //===--------------------------------------------------------------------===//

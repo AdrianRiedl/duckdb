@@ -10,6 +10,7 @@ add_library(duckdb_execution OBJECT
             column_binding_resolver.cpp
             expression_executor.cpp
             join_hashtable.cpp
+            radix_hashtable.cpp
             physical_operator.cpp
             physical_plan_generator.cpp
             window_segment_tree.cpp)

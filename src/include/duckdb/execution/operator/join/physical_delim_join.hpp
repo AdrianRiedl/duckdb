@@ -30,4 +30,11 @@ public:
 	string ExtraRenderInformation() const override;
 };
 
+class PhysicalDelimJoinState : public PhysicalOperatorState {
+public:
+	PhysicalDelimJoinState(PhysicalOperator *left) : PhysicalOperatorState(left) {
+	}
+
+	unique_ptr<PhysicalOperatorState> join_state;
+};
 } // namespace duckdb

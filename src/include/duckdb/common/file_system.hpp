@@ -27,7 +27,6 @@ public:
 	void Read(void *buffer, index_t nr_bytes, index_t location);
 	void Write(void *buffer, index_t nr_bytes, index_t location);
 	void Sync();
-	void Truncate(int64_t new_size);
 
 protected:
 	virtual void Close() = 0;
@@ -77,8 +76,6 @@ public:
 
 	//! Returns the file size of a file handle, returns -1 on error
 	virtual int64_t GetFileSize(FileHandle &handle);
-	//! Truncate a file to a maximum size of new_size, new_size should be smaller than or equal to the current size of the file
-	virtual void Truncate(FileHandle &handle, int64_t new_size);
 
 	//! Check if a directory exists
 	virtual bool DirectoryExists(const string &directory);

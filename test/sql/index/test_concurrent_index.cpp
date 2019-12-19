@@ -34,13 +34,13 @@ TEST_CASE("Concurrent reads during index creation", "[index][.]") {
 	// create a single table to append to
 	REQUIRE_NO_FAIL(con.Query("CREATE TABLE integers(i INTEGER)"));
 	// append a bunch of entries
-	Appender appender(con, "integers");
+	auto appender = con.OpenAppender(DEFAULT_SCHEMA, "integers");
 	for (index_t i = 0; i < 1000000; i++) {
-		appender.BeginRow();
-		appender.Append<int32_t>(i);
-		appender.EndRow();
+		appender->BeginRow();
+		appender->AppendInteger(i);
+		appender->EndRow();
 	}
-	appender.Close();
+	con.CloseAppender();
 
 	is_finished = false;
 	// now launch a bunch of reading threads
@@ -82,13 +82,13 @@ TEST_CASE("Concurrent writes during index creation", "[index][.]") {
 	// create a single table to append to
 	REQUIRE_NO_FAIL(con.Query("CREATE TABLE integers(i INTEGER)"));
 	// append a bunch of entries
-	Appender appender(con, "integers");
+	auto appender = con.OpenAppender(DEFAULT_SCHEMA, "integers");
 	for (index_t i = 0; i < 1000000; i++) {
-		appender.BeginRow();
-		appender.Append<int32_t>(i);
-		appender.EndRow();
+		appender->BeginRow();
+		appender->AppendInteger(i);
+		appender->EndRow();
 	}
-	appender.Close();
+	con.CloseAppender();
 
 	// now launch a bunch of concurrently writing threads (!)
 	thread threads[THREAD_COUNT];

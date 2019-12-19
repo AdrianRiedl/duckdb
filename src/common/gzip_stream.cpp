@@ -4,7 +4,11 @@
 #include "duckdb/common/file_system.hpp"
 #include "duckdb/common/fstream_util.hpp"
 
-#include "miniz.hpp"
+#define MINIZ_NO_ARCHIVE_APIS
+#define MINIZ_NO_STDIO
+#define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
+
+#include "miniz.h"
 
 #include <limits>
 

@@ -2,7 +2,6 @@
 #include "duckdb/storage/table/persistent_segment.hpp"
 #include "duckdb/storage/table/transient_segment.hpp"
 #include "duckdb/storage/data_table.hpp"
-#include "duckdb/storage/storage_manager.hpp"
 
 using namespace duckdb;
 using namespace std;
@@ -92,22 +91,6 @@ void ColumnData::Append(ColumnAppendState &state, Vector &vector) {
 		offset += copied_elements;
 		count -= copied_elements;
 	}
-}
-
-void ColumnData::RevertAppend(row_t start_row) {
-	lock_guard<mutex> tree_lock(data.node_lock);
-	// find the segment index that the current row belongs to
-	index_t segment_index = data.GetSegmentIndex(start_row);
-	auto segment = data.nodes[segment_index].node;
-	auto &transient = (TransientSegment&) *segment;
-	assert(transient.segment_type == ColumnSegmentType::TRANSIENT);
-
-	// remove any segments AFTER this segment: they should be deleted entirely
-	if (segment_index < data.nodes.size() - 1) {
-		data.nodes.erase(data.nodes.begin() + segment_index + 1, data.nodes.end());
-	}
-	segment->next = nullptr;
-	transient.RevertAppend(start_row);
 }
 
 void ColumnData::Update(Transaction &transaction, Vector &updates, row_t *ids) {

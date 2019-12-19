@@ -476,7 +476,7 @@ Value Value::Deserialize(Deserializer &source) {
 bool Value::IsUTF8String(const char *s) {
 	int c;
 
-	if (s == nullptr) {
+	if (s == NULL) {
 		return true;
 	}
 	if (*s == '\200' && s[1] == '\0') {

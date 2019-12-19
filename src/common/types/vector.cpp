@@ -133,6 +133,9 @@ void Vector::SetValue(uint64_t index_, Value val) {
 	case TypeId::BIGINT:
 		((int64_t *)data)[index] = newVal.is_null ? 0 : newVal.value_.bigint;
 		break;
+	case TypeId::HASH:
+		((uint64_t *)data)[index] = newVal.is_null ? 0 : newVal.value_.hash;
+		break;
 	case TypeId::FLOAT:
 		((float *)data)[index] = newVal.is_null ? 0 : newVal.value_.float_;
 		break;

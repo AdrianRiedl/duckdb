@@ -65,8 +65,6 @@ if(${EXPLICIT_EXCEPTIONS})
   set(CXX_EXTRA "${CXX_EXTRA} -fexceptions")
 endif()
 
-option(AMALGAMATION_BUILD "Build from the amalgamation files, rather than from the normal sources." FALSE)
-
 if(NOT MSVC)
   set(CMAKE_CXX_FLAGS_DEBUG
       "${CMAKE_CXX_FLAGS_DEBUG} -g -O0 -DDEBUG -Wall ${M32_FLAG} ${CXX_EXTRA}")
@@ -101,7 +99,7 @@ set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
 
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-  set(DEFAULT_BUILD_TYPE "Release")
+  set(DEFAULT_BUILD_TYPE "RelWithDebInfo")
   message(STATUS "Setting build type to '${DEFAULT_BUILD_TYPE}'.")
   set(CMAKE_BUILD_TYPE
       "${DEFAULT_BUILD_TYPE}"

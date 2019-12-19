@@ -3,7 +3,6 @@ include_directories(../../third_party/libpg_query)
 
 add_subdirectory(constraints)
 add_subdirectory(expression)
-add_subdirectory(parsed_data)
 add_subdirectory(query_node)
 add_subdirectory(statement)
 add_subdirectory(tableref)
@@ -15,6 +14,7 @@ add_library(duckdb_parser OBJECT
             parsed_expression.cpp
             parsed_expression_iterator.cpp
             parser.cpp
+            pragma_parser.cpp
             query_node.cpp
             tableref.cpp
             transformer.cpp)

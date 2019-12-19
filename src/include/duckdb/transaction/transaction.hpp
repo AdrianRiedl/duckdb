@@ -57,10 +57,14 @@ public:
 	bool is_invalidated;
 
 public:
-	void PushCatalogEntry(CatalogEntry *entry, data_ptr_t extra_data = nullptr, index_t extra_data_size = 0);
+	void PushCatalogEntry(CatalogEntry *entry);
+	//! Push a query into the undo buffer
+	void PushQuery(string query);
 
-	//! Commit the current transaction with the given commit identifier. Returns true if the transaction commit was successful, or false if it was aborted.
-	bool Commit(WriteAheadLog *log, transaction_t commit_id) noexcept;
+	//! Checks whether or not the transaction can be successfully committed,
+	void CheckCommit();
+	//! Commit the current transaction with the given commit identifier
+	void Commit(WriteAheadLog *log, transaction_t commit_id) noexcept;
 	//! Rollback
 	void Rollback() noexcept {
 		undo_buffer.Rollback();

@@ -18,8 +18,8 @@ namespace duckdb {
 //! the data but only add a selection vector.
 class PhysicalOrder : public PhysicalOperator {
 public:
-	PhysicalOrder(vector<TypeId> types, vector<BoundOrderByNode> orders)
-	    : PhysicalOperator(PhysicalOperatorType::ORDER_BY, move(types)), orders(move(orders)) {
+	PhysicalOrder(LogicalOperator &op, vector<BoundOrderByNode> orders)
+	    : PhysicalOperator(PhysicalOperatorType::ORDER_BY, op.types), orders(move(orders)) {
 	}
 
 	vector<BoundOrderByNode> orders;
@@ -29,4 +29,13 @@ public:
 	unique_ptr<PhysicalOperatorState> GetOperatorState() override;
 };
 
+class PhysicalOrderOperatorState : public PhysicalOperatorState {
+public:
+	PhysicalOrderOperatorState(PhysicalOperator *child) : PhysicalOperatorState(child), position(0) {
+	}
+
+	index_t position;
+	ChunkCollection sorted_data;
+	unique_ptr<index_t[]> sorted_vector;
+};
 } // namespace duckdb

@@ -36,12 +36,6 @@ struct UndoChunk {
 //! transactions accessing them)
 class UndoBuffer {
 public:
-	struct IteratorState {
-		UndoChunk *current;
-		data_ptr_t start;
-		data_ptr_t end;
-	};
-public:
 	UndoBuffer();
 
 	//! Reserve space for an entry of the specified type and length in the undo
@@ -53,9 +47,7 @@ public:
 	//! Cleanup the undo buffer
 	void Cleanup();
 	//! Commit the changes made in the UndoBuffer: should be called on commit
-	void Commit(UndoBuffer::IteratorState iterator_state, WriteAheadLog *log, transaction_t commit_id);
-	//! Revert committed changes made in the UndoBuffer up until the currently committed state
-	void RevertCommit(UndoBuffer::IteratorState iterator_state, transaction_t transaction_id);
+	void Commit(WriteAheadLog *log, transaction_t commit_id) noexcept;
 	//! Rollback the changes made in this UndoBuffer: should be called on
 	//! rollback
 	void Rollback() noexcept;
@@ -65,8 +57,7 @@ private:
 	UndoChunk *tail;
 
 private:
-	template <class T> void IterateEntries(UndoBuffer::IteratorState &state, T &&callback);
-	template <class T> void IterateEntries(UndoBuffer::IteratorState &state, UndoBuffer::IteratorState &end_state, T &&callback);
+	template <class T> void IterateEntries(T &&callback);
 	template <class T> void ReverseIterateEntries(T &&callback);
 };
 

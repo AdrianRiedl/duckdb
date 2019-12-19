@@ -1,5 +1,4 @@
 #include "duckdb/planner/operator/logical_aggregate.hpp"
-#include "duckdb/common/string_util.hpp"
 
 using namespace duckdb;
 using namespace std;
@@ -18,9 +17,13 @@ string LogicalAggregate::ParamsToString() const {
 	string result = LogicalOperator::ParamsToString();
 	if (groups.size() > 0) {
 		result += "[";
-		result += StringUtil::Join(groups, groups.size(), ", ", [](const unique_ptr<Expression>& child){
-			return child->GetName();
-		});
+		for (index_t i = 0; i < groups.size(); i++) {
+			auto &child = groups[i];
+			result += child->GetName();
+			if (i < groups.size() - 1) {
+				result += ", ";
+			}
+		}
 		result += "]";
 	}
 

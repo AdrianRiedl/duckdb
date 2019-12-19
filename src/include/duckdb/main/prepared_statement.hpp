@@ -12,20 +12,21 @@
 
 namespace duckdb {
 class ClientContext;
-class PreparedStatementData;
 
 //! A prepared statement
 class PreparedStatement {
 public:
 	//! Create a successfully prepared prepared statement object with the given name
-	PreparedStatement(ClientContext *context, string name, PreparedStatementData &data, index_t n_param = 0);
+	PreparedStatement(ClientContext *context, string name, index_t n_param = 0)
+	    : context(context), name(name), success(true), is_invalidated(false), n_param(n_param) {
+	}
 	//! Create a prepared statement that was not successfully prepared
-	PreparedStatement(string error);
+	PreparedStatement(string error) : context(nullptr), success(false), error(error), is_invalidated(false) {
+	}
 
 	~PreparedStatement();
 
 public:
-	StatementType type;
 	//! The client context this prepared statement belongs to
 	ClientContext *context;
 	//! The internal name of the prepared statement
@@ -36,12 +37,8 @@ public:
 	string error;
 	//! Whether or not the prepared statement has been invalidated because the underlying connection has been destroyed
 	bool is_invalidated;
-	//! The amount of bound parameters
+
 	index_t n_param;
-	//! The result SQL types of the prepared statement
-	vector<SQLType> types;
-	//! The result names of the prepared statement
-	vector<string> names;
 
 public:
 	//! Execute the prepared statement with the given set of arguments

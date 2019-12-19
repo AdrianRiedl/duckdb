@@ -1,5 +1,4 @@
 #include "duckdb/planner/expression/bound_operator_expression.hpp"
-#include "duckdb/common/string_util.hpp"
 
 using namespace duckdb;
 using namespace std;
@@ -20,10 +19,14 @@ string BoundOperatorExpression::ToString() const {
 	}
 	// if there is no operator we render it as a function
 	auto result = ExpressionTypeToString(type) + "(";
-	result += StringUtil::Join(children, children.size(), ", ", [](const unique_ptr<Expression>& child){
-		return child->GetName();
-	});
-	result += ")";
+	for (index_t i = 0; i < children.size(); i++) {
+		result += children[i]->GetName();
+		if (i + 1 < children.size()) {
+			result += ", ";
+		} else {
+			result += ")";
+		}
+	}
 	return result;
 }
 

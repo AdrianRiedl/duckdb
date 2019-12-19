@@ -14,10 +14,7 @@ SegmentBase *SegmentTree::GetLastSegment() {
 
 SegmentBase *SegmentTree::GetSegment(index_t row_number) {
 	lock_guard<mutex> tree_lock(node_lock);
-	return nodes[GetSegmentIndex(row_number)].node;
-}
 
-index_t SegmentTree::GetSegmentIndex(index_t row_number) {
 	index_t lower = 0;
 	index_t upper = nodes.size() - 1;
 	// binary search to find the node
@@ -29,7 +26,7 @@ index_t SegmentTree::GetSegmentIndex(index_t row_number) {
 		} else if (row_number >= entry.row_start + entry.node->count) {
 			lower = index + 1;
 		} else {
-			return index;
+			return entry.node;
 		}
 	}
 	throw Exception("Could not find node in column segment tree!");

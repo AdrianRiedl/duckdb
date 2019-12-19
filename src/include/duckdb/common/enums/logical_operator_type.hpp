@@ -46,6 +46,7 @@ enum class LogicalOperatorType : uint8_t {
 	COMPARISON_JOIN,
 	ANY_JOIN,
 	CROSS_PRODUCT,
+	RADIX_JOIN,
 	// -----------------------------
 	// SetOps
 	// -----------------------------
@@ -59,19 +60,8 @@ enum class LogicalOperatorType : uint8_t {
 	INSERT,
 	DELETE,
 	UPDATE,
-
-	// -----------------------------
-	// Schema
-	// -----------------------------
-	ALTER,
 	CREATE_TABLE,
 	CREATE_INDEX,
-	CREATE_SEQUENCE,
-	CREATE_VIEW,
-	CREATE_SCHEMA,
-	DROP,
-	PRAGMA,
-	TRANSACTION,
 
 	// -----------------------------
 	// Explain

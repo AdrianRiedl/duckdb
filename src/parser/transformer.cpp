@@ -6,9 +6,9 @@
 using namespace duckdb;
 using namespace std;
 
-bool Transformer::TransformParseTree(PGList *tree, vector<unique_ptr<SQLStatement>> &statements) {
+bool Transformer::TransformParseTree(postgres::List *tree, vector<unique_ptr<SQLStatement>> &statements) {
 	for (auto entry = tree->head; entry != nullptr; entry = entry->next) {
-		auto stmt = TransformStatement((PGNode *)entry->data.ptr_value);
+		auto stmt = TransformStatement((postgres::Node *)entry->data.ptr_value);
 		if (!stmt) {
 			statements.clear();
 			return false;
@@ -18,60 +18,51 @@ bool Transformer::TransformParseTree(PGList *tree, vector<unique_ptr<SQLStatemen
 	return true;
 }
 
-unique_ptr<SQLStatement> Transformer::TransformStatement(PGNode *stmt) {
+unique_ptr<SQLStatement> Transformer::TransformStatement(postgres::Node *stmt) {
 	switch (stmt->type) {
-	case T_PGRawStmt: {
-		auto raw_stmt = (PGRawStmt *)stmt;
-		auto result = TransformStatement(raw_stmt->stmt);
-		if (result) {
-			result->stmt_location = raw_stmt->stmt_location;
-			result->stmt_length = raw_stmt->stmt_len;
-		}
-		return result;
-	}
-	case T_PGSelectStmt:
+	case postgres::T_RawStmt:
+		return TransformStatement(((postgres::RawStmt *)stmt)->stmt);
+	case postgres::T_SelectStmt:
 		return TransformSelect(stmt);
-	case T_PGCreateStmt:
+	case postgres::T_CreateStmt:
 		return TransformCreateTable(stmt);
-	case T_PGCreateSchemaStmt:
+	case postgres::T_CreateSchemaStmt:
 		return TransformCreateSchema(stmt);
-	case T_PGViewStmt:
+	case postgres::T_ViewStmt:
 		return TransformCreateView(stmt);
-	case T_PGCreateSeqStmt:
+	case postgres::T_CreateSeqStmt:
 		return TransformCreateSequence(stmt);
-	case T_PGDropStmt:
+	case postgres::T_DropStmt:
 		return TransformDrop(stmt);
-	case T_PGInsertStmt:
+	case postgres::T_InsertStmt:
 		return TransformInsert(stmt);
-	case T_PGCopyStmt:
+	case postgres::T_CopyStmt:
 		return TransformCopy(stmt);
-	case T_PGTransactionStmt:
+	case postgres::T_TransactionStmt:
 		return TransformTransaction(stmt);
-	case T_PGDeleteStmt:
+	case postgres::T_DeleteStmt:
 		return TransformDelete(stmt);
-	case T_PGUpdateStmt:
+	case postgres::T_UpdateStmt:
 		return TransformUpdate(stmt);
-	case T_PGIndexStmt:
+	case postgres::T_IndexStmt:
 		return TransformCreateIndex(stmt);
-	case T_PGAlterTableStmt:
+	case postgres::T_AlterTableStmt:
 		return TransformAlter(stmt);
-	case T_PGRenameStmt:
+	case postgres::T_RenameStmt:
 		return TransformRename(stmt);
-	case T_PGPrepareStmt:
+	case postgres::T_PrepareStmt:
 		return TransformPrepare(stmt);
-	case T_PGExecuteStmt:
+	case postgres::T_ExecuteStmt:
 		return TransformExecute(stmt);
-	case T_PGDeallocateStmt:
+	case postgres::T_DeallocateStmt:
 		return TransformDeallocate(stmt);
-	case T_PGCreateTableAsStmt:
+	case postgres::T_CreateTableAsStmt:
 		return TransformCreateTableAs(stmt);
-	case T_PGPragmaStmt:
-		return TransformPragma(stmt);
-	case T_PGExplainStmt: {
-		PGExplainStmt *explain_stmt = reinterpret_cast<PGExplainStmt *>(stmt);
+	case postgres::T_ExplainStmt: {
+		postgres::ExplainStmt *explain_stmt = reinterpret_cast<postgres::ExplainStmt *>(stmt);
 		return make_unique<ExplainStatement>(TransformStatement(explain_stmt->query));
 	}
-	case T_PGVacuumStmt: { // Ignore VACUUM/ANALYZE for now
+	case postgres::T_VacuumStmt: { // Ignore VACUUM/ANALYZE for now
 		return nullptr;
 	}
 	default:

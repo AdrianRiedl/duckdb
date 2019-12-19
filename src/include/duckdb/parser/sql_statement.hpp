@@ -22,7 +22,5 @@ public:
 	}
 
 	StatementType type;
-	index_t stmt_location;
-	index_t stmt_length;
 };
 } // namespace duckdb

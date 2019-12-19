@@ -30,14 +30,11 @@ public:
 	data_t &operator[](std::size_t i);
 	const data_t &operator[](std::size_t i) const;
 	bool operator>(const Key &k) const;
-    bool operator<(const Key &k) const;
-    bool operator>=(const Key &k) const;
+	bool operator>=(const Key &k) const;
 	bool operator==(const Key &k) const;
 
 	string ToString(bool is_little_endian, TypeId type);
 
-    static uint32_t EncodeFloat(float x);
-    static uint64_t EncodeDouble(double x);
 private:
 	template <class T> static unique_ptr<data_t[]> CreateData(T value, bool is_little_endian) {
 		throw NotImplementedException("Cannot create data from this type");
@@ -48,8 +45,7 @@ template <> unique_ptr<data_t[]> Key::CreateData(int8_t value, bool is_little_en
 template <> unique_ptr<data_t[]> Key::CreateData(int16_t value, bool is_little_endian);
 template <> unique_ptr<data_t[]> Key::CreateData(int32_t value, bool is_little_endian);
 template <> unique_ptr<data_t[]> Key::CreateData(int64_t value, bool is_little_endian);
-template <> unique_ptr<data_t[]> Key::CreateData(double value, bool is_little_endian);
-template <> unique_ptr<data_t[]> Key::CreateData(float value, bool is_little_endian);
+
 template <> unique_ptr<Key> Key::CreateKey(string element, bool is_little_endian);
 
 } // namespace duckdb

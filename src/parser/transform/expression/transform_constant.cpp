@@ -5,15 +5,15 @@
 using namespace duckdb;
 using namespace std;
 
-unique_ptr<ParsedExpression> Transformer::TransformValue(PGValue val) {
+unique_ptr<ParsedExpression> Transformer::TransformValue(postgres::Value val) {
 	switch (val.type) {
-	case T_PGInteger:
+	case postgres::T_Integer:
 		assert(val.val.ival <= numeric_limits<int32_t>::max());
 		return make_unique<ConstantExpression>(SQLType::INTEGER, Value::INTEGER((int32_t)val.val.ival));
-	case T_PGBitString: // FIXME: this should actually convert to BLOB
-	case T_PGString:
+	case postgres::T_BitString: // FIXME: this should actually convert to BLOB
+	case postgres::T_String:
 		return make_unique<ConstantExpression>(SQLType::VARCHAR, Value(string(val.val.str)));
-	case T_PGFloat: {
+	case postgres::T_Float: {
 		bool cast_as_double = false;
 		for (auto ptr = val.val.str; *ptr; ptr++) {
 			if (*ptr == '.') {
@@ -32,13 +32,13 @@ unique_ptr<ParsedExpression> Transformer::TransformValue(PGValue val) {
 			return make_unique<ConstantExpression>(SQLType::DOUBLE, Value::DOUBLE(dbl_value));
 		}
 	}
-	case T_PGNull:
+	case postgres::T_Null:
 		return make_unique<ConstantExpression>(SQLType::SQLNULL, Value());
 	default:
 		throw NotImplementedException("Value not implemented!");
 	}
 }
 
-unique_ptr<ParsedExpression> Transformer::TransformConstant(PGAConst *c) {
+unique_ptr<ParsedExpression> Transformer::TransformConstant(postgres::A_Const *c) {
 	return TransformValue(c->val);
 }

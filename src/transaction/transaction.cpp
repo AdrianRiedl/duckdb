@@ -15,23 +15,10 @@
 using namespace duckdb;
 using namespace std;
 
-void Transaction::PushCatalogEntry(CatalogEntry *entry, data_ptr_t extra_data, index_t extra_data_size) {
-	index_t alloc_size = sizeof(CatalogEntry*);
-	if (extra_data_size > 0) {
-		alloc_size += extra_data_size + sizeof(index_t);
-	}
-	auto baseptr = undo_buffer.CreateEntry(UndoFlags::CATALOG_ENTRY, alloc_size);
-	// store the pointer to the catalog entry
-	*((CatalogEntry**) baseptr) = entry;
-	if (extra_data_size > 0) {
-		// copy the extra data behind the catalog entry pointer (if any)
-		baseptr += sizeof(CatalogEntry*);
-		// first store the extra data size
-		*((index_t*) baseptr) = extra_data_size;
-		baseptr += sizeof(index_t);
-		// then copy over the actual data
-		memcpy(baseptr, extra_data, extra_data_size);
-	}
+void Transaction::PushCatalogEntry(CatalogEntry *entry) {
+	// store only the pointer to the catalog entry
+	CatalogEntry **blob = (CatalogEntry **)undo_buffer.CreateEntry(UndoFlags::CATALOG_ENTRY, sizeof(CatalogEntry *));
+	*blob = entry;
 }
 
 void Transaction::PushDelete(ChunkInfo *vinfo, row_t rows[], index_t count, index_t base_row) {
@@ -64,38 +51,30 @@ UpdateInfo *Transaction::CreateUpdateInfo(index_t type_size, index_t entries) {
 	return update_info;
 }
 
-bool Transaction::Commit(WriteAheadLog *log, transaction_t commit_id) noexcept {
+void Transaction::PushQuery(string query) {
+	char *blob = (char *)undo_buffer.CreateEntry(UndoFlags::QUERY, query.size() + 1);
+	strcpy(blob, query.c_str());
+}
+
+void Transaction::CheckCommit() {
+	storage.CheckCommit();
+}
+
+void Transaction::Commit(WriteAheadLog *log, transaction_t commit_id) noexcept {
 	this->commit_id = commit_id;
 
-	UndoBuffer::IteratorState iterator_state;
-	LocalStorage::CommitState commit_state;
-	int64_t initial_wal_size;
-	if (log) {
-		initial_wal_size = log->GetWALSize();
-	}
+	// commit the undo buffer
 	bool changes_made = undo_buffer.ChangesMade() || storage.ChangesMade() || sequence_usage.size() > 0;
-	try {
-		// commit the undo buffer
-		undo_buffer.Commit(iterator_state, log, commit_id);
-		storage.Commit(commit_state, *this, log, commit_id);
-		if (log) {
-			// commit any sequences that were used to the WAL
-			for (auto &entry : sequence_usage) {
-				log->WriteSequenceValue(entry.first, entry.second);
-			}
-			// flush the WAL
-			if (changes_made) {
-				log->Flush();
-			}
+	undo_buffer.Commit(log, commit_id);
+	storage.Commit(*this, log, commit_id);
+	if (log) {
+		// commit any sequences that were used to the WAL
+		for (auto &entry : sequence_usage) {
+			log->WriteSequenceValue(entry.first, entry.second);
 		}
-		return true;
-	} catch(Exception &ex) {
-		undo_buffer.RevertCommit(iterator_state, transaction_id);
-		storage.RevertCommit(commit_state);
-		if (log && changes_made) {
-			// remove any entries written into the WAL by truncating it
-			log->Truncate(initial_wal_size);
+		// flush the WAL
+		if (changes_made) {
+			log->Flush();
 		}
-		return false;
 	}
 }

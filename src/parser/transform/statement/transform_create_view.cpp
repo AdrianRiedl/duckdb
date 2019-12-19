@@ -6,11 +6,11 @@
 using namespace duckdb;
 using namespace std;
 
-unique_ptr<CreateViewStatement> Transformer::TransformCreateView(PGNode *node) {
+unique_ptr<CreateViewStatement> Transformer::TransformCreateView(postgres::Node *node) {
 	assert(node);
-	assert(node->type == T_PGViewStmt);
+	assert(node->type == postgres::T_ViewStmt);
 
-	auto stmt = reinterpret_cast<PGViewStmt *>(node);
+	auto stmt = reinterpret_cast<postgres::ViewStmt *>(node);
 	assert(stmt);
 	assert(stmt->view);
 
@@ -23,14 +23,14 @@ unique_ptr<CreateViewStatement> Transformer::TransformCreateView(PGNode *node) {
 	info.view_name = stmt->view->relname;
 	info.replace = stmt->replace;
 
-	info.query = TransformSelectNode((PGSelectStmt *)stmt->query);
+	info.query = TransformSelectNode((postgres::SelectStmt *)stmt->query);
 
 	if (stmt->aliases && stmt->aliases->length > 0) {
 		for (auto c = stmt->aliases->head; c != NULL; c = lnext(c)) {
-			auto node = reinterpret_cast<PGNode *>(c->data.ptr_value);
+			auto node = reinterpret_cast<postgres::Node *>(c->data.ptr_value);
 			switch (node->type) {
-			case T_PGString: {
-				auto val = (PGValue *)node;
+			case postgres::T_String: {
+				auto val = (postgres::Value *)node;
 				info.aliases.push_back(string(val->val.str));
 				break;
 			}
@@ -47,7 +47,7 @@ unique_ptr<CreateViewStatement> Transformer::TransformCreateView(PGNode *node) {
 		throw NotImplementedException("VIEW options");
 	}
 
-	if (stmt->withCheckOption != PGViewCheckOption::PG_NO_CHECK_OPTION) {
+	if (stmt->withCheckOption != postgres::ViewCheckOption::NO_CHECK_OPTION) {
 		throw NotImplementedException("VIEW CHECK options");
 	}
 
