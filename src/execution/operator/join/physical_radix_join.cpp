@@ -284,7 +284,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             expected.push_back(typesRight.at(i));
         }
         //checkStream << partitionsrelevant << " " << shrinked.size() << std::endl;
-        results.resize(partitionsrelevant);
+        //results.resize(partitionsrelevant);
 #if TIMER
         auto finish = std::chrono::high_resolution_clock::now();
         std::cerr << "Setting the reduced partitions took: "
@@ -341,15 +341,9 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 #endif
     }
 
-    if (output_index < results.size()) {
-        do {
-            results[output_index].chunks[output_internal]->Move(chunk);
-            output_internal++;
-            if (output_internal == results[output_index].chunks.size()) {
-                output_index++;
-                output_internal = 0;
-            }
-        } while (chunk.size() == 0);
+    if (output_index < result.count) {
+        result.GetChunk(output_index).Move(chunk);
+        output_index+=STANDARD_VECTOR_SIZE;
     } else {
         DataChunk nullChunk;
         nullChunk.Move(chunk);
@@ -446,7 +440,7 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
         for (auto &t : right) {
             left.push_back(t);
         }
-        results[i].types = left;
+        //results[i].types = left;
         DataChunk temp;
         temp.Initialize(left);
         temp.Reset();
@@ -462,7 +456,8 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
                 do {
                     temp.Reset();
                     scanStructure->Next(hashes, dataLeft, temp);
-                    results[i].Append(temp);
+                    //results[i].Append(temp);
+                    result.Append(temp);
                 } while (temp.size()>0);
                 //hash_table->Probe(hashes, dataLeft, results[i]);
                 dataLeft.Reset();
@@ -483,7 +478,8 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
         do {
             temp.Reset();
             scanStructure->Next(hashes, dataLeft, temp);
-            results[i].Append(temp);
+            //results[i].Append(temp);
+            result.Append(temp);
         } while (temp.size()>0);
         //hash_table->Probe(hashes, dataLeft, results[i]);
         finish = std::chrono::high_resolution_clock::now();

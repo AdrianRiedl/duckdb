@@ -206,8 +206,8 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
     vector<size_t> numberOfBits = {7, 7, 4, 5};
     //! How often to partition
     size_t runs = 2;
-    //! The collection to store all the results
-    vector<ChunkCollection> results;
+    //! The collection to store all the result
+    ChunkCollection result;
     //! The output datachunk
     index_t output_index = 0;
     //! Counter of the internal datachunk
