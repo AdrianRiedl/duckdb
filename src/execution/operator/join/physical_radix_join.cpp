@@ -377,15 +377,20 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
             right.push_back(state->right_data->types.at(i));
         }
         auto start = std::chrono::high_resolution_clock::now();
-        //auto hash_table = make_unique<JoinHashTable>(conditions, right, duckdb::JoinType::RADIX);
-        auto hash_table = make_unique<RadixHashTable>(conditions, state->right_data->types, duckdb::JoinType::INNER, 2 *
-                                                                                                                     dummy_hash_table->NextPow2_64(
-                                                                                                                             shrinked[i].second.second -
-                                                                                                                             shrinked[i].second.first));
-        //auto scanStructure = make_unique<JoinHashTable::ScanStructure>(*hash_table.get());
-        auto scanStructure = make_unique<RadixHashTable::ScanStructure>(*hash_table.get());
+        auto hash_table = make_unique<JoinHashTable>(conditions, right, duckdb::JoinType::RADIX);
+        //auto hash_table = make_unique<RadixHashTable>(conditions, state->right_data->types, duckdb::JoinType::INNER, 2 *
+        //                                                                                                             dummy_hash_table->NextPow2_64(
+        //                                                                                                                     shrinked[i].second.second -
+        //                                                                                                                     shrinked[i].second.first));
+        auto scanStructure = make_unique<JoinHashTable::ScanStructure>(*hash_table.get());
+        //auto scanStructure = make_unique<RadixHashTable::ScanStructure>(*hash_table.get());
         DataChunk dataRight;
-        dataRight.Initialize(state->right_data->types);
+        vector<TypeId> te;
+        for(auto &t : state->right_data->types) {
+            if(t != TypeId::HASH)
+                te.push_back(t);
+        }
+        dataRight.Initialize(te);
         // The datachunk for the hashes of this partition
         DataChunk hashes;
         hashes.Initialize(hash_table->condition_types);
@@ -406,7 +411,7 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
                 dataRight.Reset();
                 pos = dataRight.size();
             }
-            for (index_t col = 0; col < state->right_data->types.size(); col++) {
+            for (index_t col = 0; col < state->right_data->types.size()-1; col++) {
                 dataRight.data[col].count += 1;
                 dataRight.data[col].SetValue(pos, state->right_data->GetValue(col, index));
             }
@@ -435,13 +440,16 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
         for (index_t i = 0; i < state->left_data->types.size() - 1; i++) {
             left.push_back(state->left_data->types.at(i));
         }
-        dataLeft.Initialize(state->left_data->types);
+        dataLeft.Initialize(left);//state->left_data->types);
         hashes.Initialize(hash_table->condition_types);
         // left now contains all the information of the types the parent needs
         for (auto &t : right) {
             left.push_back(t);
         }
         results[i].types = left;
+        DataChunk temp;
+        temp.Initialize(left);
+        temp.Reset();
         for (index_t index = shrinked[i].first.first; index < shrinked[i].first.second; index++) {
             index_t pos = dataLeft.size();
             if (dataLeft.size() == STANDARD_VECTOR_SIZE) {
@@ -450,11 +458,17 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
                 for (index_t j = 0; j < conditions.size(); j++) {
                     executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
                 }
-                hash_table->Probe(hashes, dataLeft, results[i]);
+                scanStructure = hash_table->Probe(hashes);
+                do {
+                    temp.Reset();
+                    scanStructure->Next(hashes, dataLeft, temp);
+                    results[i].Append(temp);
+                } while (temp.size()>0);
+                //hash_table->Probe(hashes, dataLeft, results[i]);
                 dataLeft.Reset();
                 pos = dataLeft.size();
             }
-            for (index_t col = 0; col < state->left_data->types.size(); col++) {
+            for (index_t col = 0; col < state->left_data->types.size()-1; col++) {
                 dataLeft.data[col].count += 1;
                 dataLeft.data[col].SetValue(pos, state->left_data->GetValue(col, index));
             }
@@ -465,7 +479,13 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
             executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
         }
 
-        hash_table->Probe(hashes, dataLeft, results[i]);
+        scanStructure = hash_table->Probe(hashes);
+        do {
+            temp.Reset();
+            scanStructure->Next(hashes, dataLeft, temp);
+            results[i].Append(temp);
+        } while (temp.size()>0);
+        //hash_table->Probe(hashes, dataLeft, results[i]);
         finish = std::chrono::high_resolution_clock::now();
         timeProbe += std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count();
     }
