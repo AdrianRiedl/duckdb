@@ -52,8 +52,12 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             DataChunk left_chunk;
             DataChunk left_chunk_withHash;
             left_chunk.Initialize(left_types);
-            left_types.push_back(TypeId::HASH);
-            left_chunk_withHash.Initialize(left_types);
+            vector<TypeId> hashLeft;
+            hashLeft.push_back(TypeId::HASH);
+            for (auto &t : left_types) {
+                hashLeft.push_back(t);
+            }
+            left_chunk_withHash.Initialize(hashLeft);
 
             //! Fetch all the chunks from the left side
             // Generate the histogram for the left side
@@ -84,12 +88,12 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                     size_t pos = hash.value_.hash & hash_bit_mask;
                     state->left_histogram->IncrementBucketCounter(0, pos);
                     for (index_t col = 0; col < left_chunk.column_count; col++) {
-                        left_chunk_withHash.GetVector(col).count++;
-                        left_chunk_withHash.GetVector(col).SetValue(hashNumber,
-                                                                    left_chunk.GetVector(col).GetValue(hashNumber));
+                        left_chunk_withHash.GetVector(col + 1).count++;
+                        left_chunk_withHash.GetVector(col + 1).SetValue(hashNumber,
+                                                                        left_chunk.GetVector(col).GetValue(hashNumber));
                     }
-                    left_chunk_withHash.GetVector(left_chunk.column_count).count++;
-                    left_chunk_withHash.GetVector(left_chunk.column_count).SetValue(hashNumber, hash);
+                    left_chunk_withHash.GetVector(0).count++;
+                    left_chunk_withHash.GetVector(0).SetValue(hashNumber, hash);
                 }
                 state->left_data->Append(left_chunk_withHash);
                 state->left_data_partitioned->Append(left_chunk_withHash);
@@ -99,10 +103,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             std::cerr << "Collecting the left side took: "
                       << std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count() << "ns!"
                       << std::endl;
-            //checkStream << "Left size: " << state->left_data->count << std::endl;
 #endif
-            //state->left_data->Print();
-
             //! Start the partitioning phase with #runs runs and the bits in numberOfBits
 #if TIMER
             start = std::chrono::high_resolution_clock::now();
@@ -136,8 +137,12 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             DataChunk right_chunk;
             DataChunk right_chunk_withHash;
             right_chunk.Initialize(right_types);
-            right_types.push_back(TypeId::HASH);
-            right_chunk_withHash.Initialize(right_types);
+            vector<TypeId> hashRight;
+            hashRight.push_back(TypeId::HASH);
+            for (auto &t : right_types) {
+                hashRight.push_back(t);
+            }
+            right_chunk_withHash.Initialize(hashRight);
 
             //! Fetch all the chunks from the right side
             // Generate the histogram for the right side
@@ -168,12 +173,13 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                     size_t pos = hash.value_.hash & hash_bit_mask;
                     state->right_histogram->IncrementBucketCounter(0, pos);
                     for (index_t col = 0; col < right_chunk.column_count; col++) {
-                        right_chunk_withHash.GetVector(col).count++;
-                        right_chunk_withHash.GetVector(col).SetValue(hashNumber,
-                                                                     right_chunk.GetVector(col).GetValue(hashNumber));
+                        right_chunk_withHash.GetVector(col + 1).count++;
+                        right_chunk_withHash.GetVector(col + 1).SetValue(hashNumber,
+                                                                         right_chunk.GetVector(col).GetValue(
+                                                                                 hashNumber));
                     }
-                    right_chunk_withHash.GetVector(right_chunk.column_count).count++;
-                    right_chunk_withHash.GetVector(right_chunk.column_count).SetValue(hashNumber, hash);
+                    right_chunk_withHash.GetVector(0).count++;
+                    right_chunk_withHash.GetVector(0).SetValue(hashNumber, hash);
                 }
                 state->right_data->Append(right_chunk_withHash);
                 state->right_data_partitioned->Append(right_chunk_withHash);
@@ -184,7 +190,6 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             std::cerr << "Collecting the right side took: "
                       << std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count() << "ns!"
                       << std::endl;
-            //checkStream << "Right size: " << state->right_data->count << std::endl;
 #endif
 
             //! Start the partitioning phase with #runs runs and the bits in numberOfBits
@@ -343,7 +348,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 
     if (output_index < result.count) {
         result.GetChunk(output_index).Move(chunk);
-        output_index+=STANDARD_VECTOR_SIZE;
+        output_index += STANDARD_VECTOR_SIZE;
     } else {
         DataChunk nullChunk;
         nullChunk.Move(chunk);
@@ -354,20 +359,13 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *state,
                                              vector<std::pair<std::pair<index_t, index_t>, std::pair<index_t, index_t>>> &shrinked,
                                              vector<TypeId> &expected, std::atomic<index_t> &index) {
-    //std::ofstream checkStream("/Users/adrianriedl/Desktop/check.txt",std::fstream::app);
     while (1) {
         auto i = index++;
         if (i >= shrinked.size()) {
             break;
         }
-#if PREFETCH
-        if(i< shrinked.size()-1) {
-            __builtin_prefetch(&state->right_data->GetChunk(shrinked[i+1].second.first));
-            __builtin_prefetch(&state->right_data->GetChunk(shrinked[i+1].second.second));
-        }
-#endif
         vector<TypeId> right;
-        for (index_t i = 0; i < state->right_data->types.size() - 1; i++) {
+        for (index_t i = 1; i < state->right_data->types.size(); i++) {
             right.push_back(state->right_data->types.at(i));
         }
         auto start = std::chrono::high_resolution_clock::now();
@@ -384,11 +382,10 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
             if(t != TypeId::HASH)
                 te.push_back(t);
         }
-        dataRight.Initialize(te);
+        dataRight.Initialize(te);//state->right_data->types);
         // The datachunk for the hashes of this partition
         DataChunk hashes;
         hashes.Initialize(hash_table->condition_types);
-        //checkStream << "here " << i << " " << shrinked[i].second.first << " " << shrinked[i].second.second << std::endl;
         for (index_t index = shrinked[i].second.first; index < shrinked[i].second.second; index++) {
             index_t pos = dataRight.size();
             if (pos == STANDARD_VECTOR_SIZE) {
@@ -405,9 +402,9 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
                 dataRight.Reset();
                 pos = dataRight.size();
             }
-            for (index_t col = 0; col < state->right_data->types.size()-1; col++) {
-                dataRight.data[col].count += 1;
-                dataRight.data[col].SetValue(pos, state->right_data->GetValue(col, index));
+            for (index_t col = 1; col < state->right_data->types.size(); col++) {
+                dataRight.data[col-1].count += 1;
+                dataRight.data[col-1].SetValue(pos, state->right_data->GetValue(col, index));
             }
         }
         // After the end of this partition insert into hashtable
@@ -431,7 +428,7 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
         tempChunk.Initialize(expected);
         DataChunk dataLeft;
         vector<TypeId> left;
-        for (index_t i = 0; i < state->left_data->types.size() - 1; i++) {
+        for (index_t i = 1; i < state->left_data->types.size(); i++) {
             left.push_back(state->left_data->types.at(i));
         }
         dataLeft.Initialize(left);//state->left_data->types);
@@ -441,6 +438,7 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
             left.push_back(t);
         }
         //results[i].types = left;
+        result.types = left;
         DataChunk temp;
         temp.Initialize(left);
         temp.Reset();
@@ -459,13 +457,13 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
                     //results[i].Append(temp);
                     result.Append(temp);
                 } while (temp.size()>0);
-                //hash_table->Probe(hashes, dataLeft, results[i]);
+                //hash_table->Probe(hashes, dataLeft, result);
                 dataLeft.Reset();
                 pos = dataLeft.size();
             }
-            for (index_t col = 0; col < state->left_data->types.size()-1; col++) {
-                dataLeft.data[col].count += 1;
-                dataLeft.data[col].SetValue(pos, state->left_data->GetValue(col, index));
+            for (index_t col = 1; col < state->left_data->types.size(); col++) {
+                dataLeft.data[col-1].count += 1;
+                dataLeft.data[col-1].SetValue(pos, state->left_data->GetValue(col, index));
             }
         }
         hashes.Reset();
@@ -481,7 +479,7 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
             //results[i].Append(temp);
             result.Append(temp);
         } while (temp.size()>0);
-        //hash_table->Probe(hashes, dataLeft, results[i]);
+        //hash_table->Probe(hashes, dataLeft, result);
         finish = std::chrono::high_resolution_clock::now();
         timeProbe += std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count();
     }
@@ -524,7 +522,7 @@ void PhysicalRadixJoin::RadixJoinPartitionWorkerLeft(PhysicalRadixJoinOperatorSt
     // Iterate over the data given to this thread
     for (index_t toOrder = startOfPartitions; toOrder < endOfPartitions; toOrder++) {
         // Get the hash of the element
-        auto hash = state->left_data->GetValue(state->left_data->column_count() - 1,
+        auto hash = state->left_data->GetValue(0,
                                                toOrder);//state->left_hashes[toOrder / STANDARD_VECTOR_SIZE]->GetValue(toOrder % STANDARD_VECTOR_SIZE);
         // Get the partition the element belongs to
         auto partition = ((hash.value_.hash & bitmask) >> shift);
@@ -550,7 +548,7 @@ void PhysicalRadixJoin::RadixJoinPartitionWorkerRight(PhysicalRadixJoinOperatorS
                                                       index_t endOfPartitions, size_t bitmask, size_t bitMaskNextRun,
                                                       size_t shift, size_t run, size_t partitionNumber) {
     for (index_t toOrder = startOfPartitions; toOrder < endOfPartitions; toOrder++) {
-        auto hash = state->right_data->GetValue(state->right_data->column_count() - 1,
+        auto hash = state->right_data->GetValue(0,
                                                 toOrder);//state->right_hashes[toOrder / STANDARD_VECTOR_SIZE]->GetValue(toOrder % STANDARD_VECTOR_SIZE);
         auto partition = ((hash.value_.hash & bitmask) >> shift);
         assert(partition >= 0 && partition < state->old_right_histogram->numberOfPartitions *
