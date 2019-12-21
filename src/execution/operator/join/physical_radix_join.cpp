@@ -256,36 +256,37 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                       << std::endl;
 #endif
         }
-#if TIMER
-        auto start = std::chrono::high_resolution_clock::now();
-#endif
         size_t partitionsrelevant = 0;
         vector<std::pair<std::pair<index_t, index_t>, std::pair<index_t, index_t>>> shrinked;
-        for (auto &p : partitions) {
-            if (p.first.second - p.first.first != 0 && p.second.second - p.second.first != 0) {
-                partitionsrelevant++;
-                // std::cout << p.second.first << " " << p.second.second << " size: " << (p.second.second - p.second.first) << std::endl;
-                shrinked.push_back(p);
-            }
-        }
-        assert(shrinked.size() == partitionsrelevant);
-        auto typesRight = state->right_data->types;
-        auto typesLeft = state->left_data->types;
         vector<TypeId> expected;
-        for (index_t i = 0; i < typesLeft.size() - 1; i++) {
-            expected.push_back(typesLeft.at(i));
-        }
-        for (index_t i = 0; i < typesRight.size() - 1; i++) {
-            expected.push_back(typesRight.at(i));
-        }
-        //checkStream << partitionsrelevant << " " << shrinked.size() << std::endl;
-        //results.resize(partitionsrelevant);
+        {
 #if TIMER
-        auto finish = std::chrono::high_resolution_clock::now();
-        std::cerr << "Setting the reduced partitions took: "
-                  << std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count() << "ns!" << std::endl;
+            auto start = std::chrono::high_resolution_clock::now();
 #endif
 
+            for (auto &p : partitions) {
+                if (p.first.second - p.first.first != 0 && p.second.second - p.second.first != 0) {
+                    partitionsrelevant++;
+                    // std::cout << p.second.first << " " << p.second.second << " size: " << (p.second.second - p.second.first) << std::endl;
+                    shrinked.push_back(p);
+                }
+            }
+            assert(shrinked.size() == partitionsrelevant);
+            auto typesRight = state->right_data->types;
+            auto typesLeft = state->left_data->types;
+            for (index_t i = 0; i < typesLeft.size() - 1; i++) {
+                expected.push_back(typesLeft.at(i));
+            }
+            for (index_t i = 0; i < typesRight.size() - 1; i++) {
+                expected.push_back(typesRight.at(i));
+            }
+#if TIMER
+            auto finish = std::chrono::high_resolution_clock::now();
+            std::cerr << "Setting the reduced partitions took: "
+                      << std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count() << "ns!"
+                      << std::endl;
+#endif
+        }
         {
 #if TIMER
             auto start = std::chrono::high_resolution_clock::now();
@@ -294,22 +295,116 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             index = 0;
 #if SINGLETHREADED
             // Assume we have at least one pair in shrink
-#if PREFETCH
-            __builtin_prefetch(&state->right_data->GetChunk(shrinked[0].second.first));
-            __builtin_prefetch(&state->right_data->GetChunk(shrinked[0].second.second));
-            __builtin_prefetch(&state->left_data->GetChunk(shrinked[0].first.first));
-            __builtin_prefetch(&state->left_data->GetChunk(shrinked[0].first.second));
-#endif
-            //checkStream.close();
-            PerformBuildAndProbe(state, shrinked, expected, index);
-            /*vector<std::thread> threads;
-            for (size_t i = 0; i < 8; i++) {
-                threads.push_back(std::thread(&PhysicalRadixJoin::PerformBuildAndProbe, this, state, std::ref(shrinked),
-                                              std::ref(expected), std::ref(index)));
+            ///////////////////////////////////////////////////////////////////
+            vector<TypeId> right;
+            for (index_t i = 0; i < state->right_data->types.size() - 1; i++) {
+                right.push_back(state->right_data->types.at(i));
             }
-            for (auto &t : threads) {
-                t.join();
-            }*/
+            DataChunk dataRight;
+            dataRight.Initialize(right);
+            // The datachunk for the hashes of this partition
+            DataChunk hashes;
+            hashes.Initialize(dummy_hash_table->condition_types);
+            result.types = expected;
+            while (1) {
+                auto startI = std::chrono::high_resolution_clock::now();
+                auto i = index++;
+                if (i >= shrinked.size()) {
+                    break;
+                }
+                //auto hash_table = make_unique<JoinHashTable>(conditions, right, duckdb::JoinType::RADIX);
+                auto hash_table = make_unique<RadixHashTable>(conditions, right, duckdb::JoinType::INNER, 2 *
+                                                                                                          dummy_hash_table->NextPow2_64(
+                                                                                                                  shrinked[i].second.second -
+                                                                                                                  shrinked[i].second.first));
+                //auto scanStructure = make_unique<JoinHashTable::ScanStructure>(*hash_table.get());
+                //auto scanStructure = make_unique<RadixHashTable::ScanStructure>(*hash_table.get());
+                dataRight.Reset();
+                hashes.Reset();
+                for (index_t index = shrinked[i].second.first; index < shrinked[i].second.second; index++) {
+                    index_t pos = dataRight.size();
+                    if (pos == STANDARD_VECTOR_SIZE) {
+                        // If the datachunk is full, then insert it into the hashtable
+                        // Make the hashes
+                        hashes.Reset();
+                        ExpressionExecutor executorR(dataRight);
+                        for (index_t col = 0; col < conditions.size(); col++) {
+                            executorR.ExecuteExpression(*conditions[col].right, hashes.data[col]);
+                        }
+                        // Insert into the hashtable
+                        hash_table->Build(hashes, dataRight);
+                        // Reset the datachunk for next iteration
+                        dataRight.Reset();
+                        pos = dataRight.size();
+                    }
+                    for (index_t col = 0; col < state->right_data->types.size() - 1; col++) {
+                        dataRight.data[col].count += 1;
+                        dataRight.data[col].SetValue(pos, state->right_data->GetValue(col, index));
+                    }
+                }
+                // After the end of this partition insert into hashtable
+                // Reset the hashes
+
+                hashes.Reset();
+                ExpressionExecutor executorR(dataRight);
+                for (index_t j = 0; j < conditions.size(); j++) {
+                    executorR.ExecuteExpression(*conditions[j].right, hashes.data[j]);
+                }
+                // Insert into the hashtable
+                hash_table->Build(hashes, dataRight);
+
+                auto finishI = std::chrono::high_resolution_clock::now();
+                timeBuild += std::chrono::duration_cast<std::chrono::nanoseconds>(finishI - startI).count();
+                //// Up to this point, the right side is in the hashtable
+
+                // Now continue with the left side
+                startI = std::chrono::high_resolution_clock::now();
+                DataChunk tempChunk;
+                tempChunk.Initialize(expected);
+                DataChunk dataLeft;
+                vector<TypeId> left;
+                for (index_t i = 0; i < state->left_data->types.size() - 1; i++) {
+                    left.push_back(state->left_data->types.at(i));
+                }
+                dataLeft.Initialize(left);//state->left_data->types);
+                hashes.Initialize(hash_table->condition_types);
+                // left now contains all the information of the types the parent needs
+                for (auto &t : right) {
+                    left.push_back(t);
+                }
+                //result.types = left;
+                DataChunk temp;
+                temp.Initialize(left);
+                temp.Reset();
+                for (index_t index = shrinked[i].first.first; index < shrinked[i].first.second; index++) {
+                    index_t pos = dataLeft.size();
+                    if (dataLeft.size() == STANDARD_VECTOR_SIZE) {
+                        hashes.Reset();
+                        ExpressionExecutor executorL(dataLeft);
+                        for (index_t j = 0; j < conditions.size(); j++) {
+                            executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
+                        }
+                        hash_table->Probe(hashes, dataLeft, result);
+                        dataLeft.Reset();
+                        pos = dataLeft.size();
+                    }
+                    for (index_t col = 0; col < state->left_data->types.size() - 1; col++) {
+                        dataLeft.data[col].count += 1;
+                        dataLeft.data[col].SetValue(pos, state->left_data->GetValue(col, index));
+                    }
+                }
+                hashes.Reset();
+                ExpressionExecutor executorL(dataLeft);
+                for (index_t j = 0; j < conditions.size(); j++) {
+                    executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
+                }
+
+                hash_table->Probe(hashes, dataLeft, result);
+                finishI = std::chrono::high_resolution_clock::now();
+                timeProbe += std::chrono::duration_cast<std::chrono::nanoseconds>(finishI - startI).count();
+            }
+            ///////////////////////////////////////////////////////////////////
+            //PerformBuildAndProbe(state, shrinked, expected, index);
 #else
             vector<std::thread> threads;
             for (size_t i = 0; i < concurentThreadsSupported; i++) {
@@ -354,12 +449,6 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
         if (i >= shrinked.size()) {
             break;
         }
-#if PREFETCH
-        if(i< shrinked.size()-1) {
-            __builtin_prefetch(&state->right_data->GetChunk(shrinked[i+1].second.first));
-            __builtin_prefetch(&state->right_data->GetChunk(shrinked[i+1].second.second));
-        }
-#endif
         vector<TypeId> right;
         for (index_t i = 0; i < state->right_data->types.size() - 1; i++) {
             right.push_back(state->right_data->types.at(i));
@@ -382,7 +471,6 @@ void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *sta
         // The datachunk for the hashes of this partition
         DataChunk hashes;
         hashes.Initialize(hash_table->condition_types);
-        //checkStream << "here " << i << " " << shrinked[i].second.first << " " << shrinked[i].second.second << std::endl;
         for (index_t index = shrinked[i].second.first; index < shrinked[i].second.second; index++) {
             index_t pos = dataRight.size();
             if (pos == STANDARD_VECTOR_SIZE) {
