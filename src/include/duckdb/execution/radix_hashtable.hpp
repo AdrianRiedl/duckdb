@@ -104,15 +104,16 @@ public:
 	};
 
 	//unique_ptr<void*> dataStorage;
-	struct DataSaver {
-	    std::vector<Value> data;
-	    unique_ptr<DataSaver> next;
-	    DataSaver(index_t size) {
-	        data.resize(size);
-	    }
-	};
+//	struct DataSaver {
+//	    std::vector<Value> data;
+//	    unique_ptr<DataSaver> next;
+//	    DataSaver(index_t size) {
+//	        data.resize(size);
+//	    }
+//	};
 	// Keys to the linked list with the data
-	std::vector<std::pair<std::vector<Value>, unique_ptr<DataSaver>>> datas;
+	//std::vector<std::pair<std::vector<Value>, unique_ptr<DataSaver>>> datas;
+	std::vector<std::pair<std::vector<Value>, std::vector<Value>>> hashTable;
 
     public:
 	RadixHashTable(vector<JoinCondition> &conditions, vector<TypeId> build_types, JoinType type,

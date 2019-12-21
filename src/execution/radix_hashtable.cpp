@@ -79,10 +79,11 @@ RadixHashTable::RadixHashTable(vector<JoinCondition> &conditions, vector<TypeId>
     //std::cout << "The initial cap is " << initial_capacity << " c" << condition_size << " " << build_size << std::endl;
     //Resize(initial_capacity);
 
-    datas.resize(initial_capacity);
-    for (auto &d : datas) {
+    hashTable.resize(initial_capacity);
+    //datas.resize(initial_capacity);
+    for (auto &d : hashTable) {
         d.first.resize(condition_types.size());
-        d.second = nullptr;
+        d.second.resize(build_types.size());
     }
 }
 
@@ -213,253 +214,61 @@ void RadixHashTable::Build(DataChunk &keys, DataChunk &payload) {
         return;
     }
     for (index_t i = 0; i < keys.size(); i++) {
-        // TODO hashes vorne an tupel
         auto bucket = payload.GetVector(payload.column_count - 1).GetValue(i).value_.hash & bitmask;
-
-        while (datas[bucket].second != nullptr) {
-            bool keyCheck = true;
-            for (index_t keyI = 0; keyI < keys.column_count; keyI++) {
-                if (keys.GetVector(keyI).GetValue(i) != datas[bucket].first[keyI]) {
-                    keyCheck = false;
-                }
-            }
+        // Iterate over all the buckets until there is one free
+        while (!hashTable[bucket].first[0].is_null) {
             bucket++;
-            bucket = bucket % (bitmask + 1);
-            if (keyCheck) {
-                break;
-            }
-
+            bucket = bucket & (bitmask);
         }
-        if (datas[bucket].second == nullptr) {
-            for (index_t keyI = 0; keyI < keys.column_count; keyI++) {
-                datas[bucket].first[keyI] = keys.GetVector(keyI).GetValue(i);
-            }
+        for (index_t keyI = 0; keyI < keys.column_count; keyI++) {
+            hashTable[bucket].first[keyI] = keys.GetVector(keyI).GetValue(i);
         }
 
-        auto old = std::move(datas[bucket].second);
-        datas[bucket].second = make_unique<DataSaver>(build_types.size() - 1);
-        datas[bucket].second->next = std::move(old);
-        for (index_t payloadI = 0; payloadI < payload.column_count - 1; payloadI++) {
-            datas[bucket].second->data[payloadI] = payload.GetVector(payloadI).GetValue(i);
+        for (index_t payloadI = 0; payloadI < payload.column_count; payloadI++) {
+            hashTable[bucket].second[payloadI] = payload.GetVector(payloadI).GetValue(i);
+            //datas[bucket].second->data[payloadI] = payload.GetVector(payloadI).GetValue(i);
         }
     }
-    // resize at 50% capacity, also need to fit the entire vector
-//	if (parallel) {
-//		parallel_lock.lock();
-//	}
-//	if (count + keys.size() > capacity / 2) {
-//	    std::cout << "Resizing to " << 2*capacity << std::endl;
-//		Resize(capacity * 2);
-//	}
-//	count += keys.size();
-//	// move strings to the string heap
-//	keys.MoveStringsToHeap(string_heap);
-//	payload.MoveStringsToHeap(string_heap);
-//
-//	if (parallel) {
-//		parallel_lock.unlock();
-//	}
-//
-//	// for any columns for which null values are equal, fill the NullMask
-//	assert(keys.column_count == null_values_are_equal.size());
-//	bool null_values_equal_for_all = true;
-//	for (index_t i = 0; i < keys.column_count; i++) {
-//		if (null_values_are_equal[i]) {
-//			VectorOperations::FillNullMask(keys.data[i]);
-//		} else {
-//			null_values_equal_for_all = false;
-//		}
-//	}
-//	// special case: correlated mark join
-//	if (join_type == JoinType::MARK && correlated_mark_join_info.correlated_types.size() > 0) {
-//		auto &info = correlated_mark_join_info;
-//		// Correlated MARK join
-//		// for the correlated mark join we need to keep track of COUNT(*) and COUNT(COLUMN) for each of the correlated
-//		// columns push into the aggregate hash table
-//		assert(info.correlated_counts);
-//		for (index_t i = 0; i < info.correlated_types.size(); i++) {
-//			info.group_chunk.data[i].Reference(keys.data[i]);
-//		}
-//		info.payload_chunk.data[0].Reference(keys.data[info.correlated_types.size()]);
-//		info.payload_chunk.data[1].Reference(keys.data[info.correlated_types.size()]);
-//		info.payload_chunk.data[0].type = info.payload_chunk.data[1].type = TypeId::BIGINT;
-//		info.payload_chunk.sel_vector = info.group_chunk.sel_vector = info.group_chunk.data[0].sel_vector;
-//		info.correlated_counts->AddChunk(info.group_chunk, info.payload_chunk);
-//	}
-//	sel_t not_null_sel_vector[STANDARD_VECTOR_SIZE];
-//	if (!null_values_equal_for_all) {
-//		// if any columns are <<not>> supposed to have NULL values are equal:
-//		// first create a selection vector of the non-null values in the keys
-//		// because in a join, any NULL value can never find a matching tuple
-//		index_t initial_keys_size = keys.size();
-//		index_t not_null_count;
-//		not_null_count = CreateNotNullSelVector(keys, not_null_sel_vector);
-//		if (not_null_count != initial_keys_size) {
-//			// the hashtable contains null values in the keys!
-//			// set the property in the HT to true
-//			// this is required for the mark join
-//			has_null = true;
-//			// now assign the new count and sel_vector to the payload as well
-//			for (index_t i = 0; i < payload.column_count; i++) {
-//				payload.data[i].count = not_null_count;
-//				payload.data[i].sel_vector = keys.data[0].sel_vector;
-//			}
-//			payload.sel_vector = keys.data[0].sel_vector;
-//		}
-//		if (not_null_count == 0) {
-//			return;
-//		}
-//	}
-//
-//	// get the locations of where to serialize the keys and payload columns
-//	data_ptr_t key_locations[STANDARD_VECTOR_SIZE];
-//	data_ptr_t tuple_locations[STANDARD_VECTOR_SIZE];
-//	auto node = make_unique<Node>(entry_size, keys.size());
-//	auto dataptr = node->data.get();
-//	VectorOperations::Exec(keys.data[0], [&](index_t i, index_t k) {
-//		// key is stored at the start
-//		key_locations[i] = dataptr;
-//		// after that the build-side tuple is stored
-//		tuple_locations[i] = dataptr + condition_size;
-//		dataptr += entry_size;
-//	});
-//	node->count = keys.size();
-//
-//	// serialize the values to these locations
-//	// we serialize all the condition variables here
-//	SerializeChunk(keys, key_locations);
-//	if (build_size > 0) {
-//		SerializeChunk(payload, tuple_locations);
-//	}
-//
-//	// hash the keys and obtain an entry in the list
-//	// note that we only hash the keys used in the equality comparison
-//	StaticVector<uint64_t> hashes;
-//	Hash(keys, hashes);
-//
-//	if (parallel) {
-//		// obtain lock
-//		parallel_lock.lock();
-//	}
-//	InsertHashes(hashes, key_locations);
-//	// store the new node as the head
-//	node->prev = move(head);
-//	head = move(node);
-//	if (parallel) {
-//		parallel_lock.unlock();
-//	}
 }
 
 void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, ChunkCollection &result) {
     DataChunk temp;
     temp.Initialize(result.types);
     for (index_t i = 0; i < keys.size(); i++) {
-        // TODO
+        // Start bucket
         auto bucket = payload.GetVector(payload.column_count - 1).GetValue(i).value_.hash & bitmask;
-        bool round = false;
-        index_t startBucket = bucket;
-        while (datas[bucket].second != nullptr) {
-            bool keyCheck = true;
+        // Iterate as long as there is no empty bucket
+        while (!hashTable[bucket].first[0].is_null) {
+            bool checkKey = true;
             for (index_t keyI = 0; keyI < keys.column_count; keyI++) {
-                if (keys.GetVector(keyI).GetValue(i) != datas[bucket].first[keyI]) {
-                    keyCheck = false;
+                if (keys.GetVector(keyI).GetValue(i) != hashTable[bucket].first[keyI]) {
+                    checkKey = false;
                 }
             }
-            if (keyCheck) {
-                break;
+            // Match found
+            if (checkKey) {
+                index_t pos = temp.size();
+                for (index_t payloadI = 0; payloadI < payload.column_count; payloadI++) {
+                    temp.GetVector(payloadI).count++;
+                    temp.GetVector(payloadI).SetValue(pos, payload.GetVector(payloadI).GetValue(i));
+                }
+                index_t offset = payload.column_count;
+                for (index_t storedI = 0; storedI < hashTable[bucket].second.size(); storedI++) {
+                    temp.GetVector(offset + storedI).count++;
+                    temp.GetVector(offset + storedI).SetValue(pos, hashTable[bucket].second[storedI]);
+                }
+
+                if (temp.size() == STANDARD_VECTOR_SIZE) {
+                    result.Append(temp);
+                    temp.Reset();
+                }
             }
             bucket++;
-            bucket = bucket % (bitmask + 1);
-            if(bucket == startBucket) {
-                round = true;
-            }
+            bucket = bucket & (bitmask);
         }
-        // If no match was found or we went through the whole table once, we continue
-        if (round || datas[bucket].second == nullptr) {
-            // no match found
-            continue;
-        }
-        DataSaver *reader = datas[bucket].second.get();
-        do {
-            // Copy the left data to the temp chunk
-            index_t pos = temp.size();
-            for (index_t payloadI = 0; payloadI < payload.column_count - 1; payloadI++) {
-                temp.GetVector(payloadI).count++;
-                temp.GetVector(payloadI).SetValue(pos, payload.GetVector(payloadI).GetValue(i));
-            }
-            // Copy the right data to the chunk
-            index_t rightStart = payload.column_count - 1;
-            for (index_t rightI = 0; rightI < reader->data.size(); rightI++) {
-                temp.GetVector(rightStart + rightI).count++;
-                temp.GetVector(rightStart + rightI).SetValue(pos, reader->data[rightI]);
-            }
-            if (temp.size() == STANDARD_VECTOR_SIZE) {
-                result.Append(temp);
-                temp.Reset();
-                temp.Initialize(result.types);
-            }
-            reader = reader->next.get();
-        } while (reader != nullptr);
-        if (temp.size() == STANDARD_VECTOR_SIZE || i == keys.size() - 1) {
-            result.Append(temp);
-            temp.Reset();
-            temp.Initialize(result.types);
-        }
-
-        //result.Print();
+        result.Append(temp);
+        temp.Reset();
     }
-//	assert(!keys.sel_vector); // should be flattened before
-//
-//	for (index_t i = 0; i < keys.column_count; i++) {
-//		if (null_values_are_equal[i]) {
-//			VectorOperations::FillNullMask(keys.data[i]);
-//		}
-//	}
-//
-//	// scan structure
-//	auto ss = make_unique<ScanStructure>(*this);
-//	// first hash all the keys to do the lookup
-//	StaticVector<uint64_t> hashes;
-//	Hash(keys, hashes);
-//
-//	// use bitmask to get index in array
-//	ApplyBitmask(hashes);
-//
-//	// now create the initial pointers from the hashes
-//	auto ptrs = (data_ptr_t *)ss->pointers.data;
-//	auto indices = (uint64_t *)hashes.data;
-//	for (index_t i = 0; i < hashes.count; i++) {
-//		auto index = indices[i];
-//		ptrs[i] = hashed_pointers[index];
-//	}
-//	ss->pointers.count = hashes.count;
-//
-//	switch (join_type) {
-//	case JoinType::SEMI:
-//	case JoinType::ANTI:
-//	case JoinType::LEFT:
-//	case JoinType::SINGLE:
-//	case JoinType::MARK:
-//		// initialize all tuples with found_match to false
-//		memset(ss->found_match, 0, sizeof(ss->found_match));
-//	case JoinType::RADIX:
-//	case JoinType::INNER: {
-//		// create the selection vector linking to only non-empty entries
-//		index_t count = 0;
-//		for (index_t i = 0; i < ss->pointers.count; i++) {
-//			if (ptrs[i]) {
-//				ss->sel_vector[count++] = i;
-//			}
-//		}
-//		ss->pointers.sel_vector = ss->sel_vector;
-//		ss->pointers.count = count;
-//		break;
-//	}
-//	default:
-//		throw NotImplementedException("Unimplemented join type for hash join");
-//	}
-//
-//	return ss;
 }
 
 ScanStructure::ScanStructure(RadixHashTable &ht) : ht(ht), finished(false) {
