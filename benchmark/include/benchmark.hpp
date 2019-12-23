@@ -30,7 +30,7 @@ struct BenchmarkState {
 //! new benchmarks
 class Benchmark {
 	constexpr static size_t DEFAULT_NRUNS = 10;
-	constexpr static size_t DEFAULT_TIMEOUT = 7200;
+	constexpr static size_t DEFAULT_TIMEOUT = 72000;
 
 	Benchmark(Benchmark &) = delete;
 
