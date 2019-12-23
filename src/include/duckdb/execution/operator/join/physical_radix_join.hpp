@@ -168,6 +168,9 @@ class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
     unique_ptr<Histogram> left_histogram;
     unique_ptr<Histogram> old_left_histogram = nullptr;
 
+    std::vector<std::pair<uint64_t, index_t>> left_hash_to_pos;
+    std::vector<std::pair<uint64_t, index_t>> left_hash_to_posSwap;
+
     /// Right side
     //! Temporary storage for the actual extraction of the join keys on the right side
     DataChunk right_join_keys;
@@ -180,6 +183,9 @@ class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
     //!Histogram
     unique_ptr<Histogram> right_histogram;
     unique_ptr<Histogram> old_right_histogram = nullptr;
+
+    std::vector<std::pair<uint64_t, index_t>> right_hash_to_pos;
+    std::vector<std::pair<uint64_t, index_t>> right_hash_to_posSwap;
 
     //! Whether or not the operator has already started
     bool initialized;
