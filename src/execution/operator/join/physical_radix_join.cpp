@@ -364,6 +364,9 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                         dataRight.data[col].count += 1;
                         dataRight.data[col].SetValue(pos, state->right_data->GetValue(col, posInData));
                     }
+                    if (index < shrinked[i].second.second - 1) {
+                        __builtin_prefetch(&state->right_data->GetChunk(state->right_hash_to_pos.at(index+1).second));
+                    }
                 }
                 // After the end of this partition insert into hashtable
                 // Reset the hashes
@@ -415,6 +418,9 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                     for (index_t col = 0; col < state->left_data->types.size() - 1; col++) {
                         dataLeft.data[col].count += 1;
                         dataLeft.data[col].SetValue(pos, state->left_data->GetValue(col, posInData));
+                    }
+                    if (index < shrinked[i].first.second - 1) {
+                        __builtin_prefetch(&state->left_data->GetChunk(state->left_hash_to_pos.at(index+1).second));
                     }
                 }
                 hashes.Reset();
