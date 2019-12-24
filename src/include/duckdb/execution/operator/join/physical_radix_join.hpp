@@ -171,6 +171,9 @@ class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
     std::vector<std::pair<uint64_t, index_t>> left_hash_to_pos;
     std::vector<std::pair<uint64_t, index_t>> left_hash_to_posSwap;
 
+    std::vector<std::pair<uint64_t, std::vector<Value>>> left_hash_to_Data;
+    std::vector<std::pair<uint64_t, std::vector<Value>>> left_hash_to_DataSwap;
+
     /// Right side
     //! Temporary storage for the actual extraction of the join keys on the right side
     DataChunk right_join_keys;
@@ -186,6 +189,9 @@ class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
 
     std::vector<std::pair<uint64_t, index_t>> right_hash_to_pos;
     std::vector<std::pair<uint64_t, index_t>> right_hash_to_posSwap;
+
+    std::vector<std::pair<uint64_t, std::vector<Value>>> right_hash_to_Data;
+    std::vector<std::pair<uint64_t, std::vector<Value>>> right_hash_to_DataSwap;
 
     //! Whether or not the operator has already started
     bool initialized;

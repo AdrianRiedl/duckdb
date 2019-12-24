@@ -30,6 +30,8 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
     //std::ofstream checkStream("/Users/adrianriedl/Desktop/check.txt",std::fstream::app);
     auto startOp = std::chrono::high_resolution_clock::now();
     auto state = reinterpret_cast<PhysicalRadixJoinOperatorState *>(state_);
+    auto left_typesGlobal = children[0]->GetTypes();
+    auto right_typesGlobal = children[1]->GetTypes();
     if (!state->initialized) {
         if (firstCall) {
             startOp = std::chrono::high_resolution_clock::now();
@@ -67,7 +69,6 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 if (left_chunk.size() == 0) {
                     break;
                 }
-
                 // Remove all the old data from the join keys
                 state->left_join_keys.Reset();
                 // Execute the same as the hash join does (order the conditions in the right way)
@@ -78,29 +79,34 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 // Calculate the hash
                 auto hashes = make_unique<StaticVector<uint64_t>>();
                 dummy_hash_table->Hash(state->left_join_keys, *hashes);
+                index_t oldOffset = state->left_hash_to_Data.size();
+                state->left_hash_to_Data.resize(oldOffset + left_chunk.size(), {0,std::vector<Value>(left_chunk.column_count)});
                 // Now fill the left histogram
                 for (index_t hashNumber = 0; hashNumber < left_chunk.size(); hashNumber++) {
                     auto hash = hashes->GetValue(hashNumber);
                     size_t pos = hash.value_.hash & hash_bit_mask;
                     state->left_histogram->IncrementBucketCounter(0, pos);
+                    state->left_hash_to_Data.at(oldOffset + hashNumber).first = hash.value_.hash;
+                    auto &vec = state->left_hash_to_Data.at(oldOffset + hashNumber).second;
                     for (index_t col = 0; col < left_chunk.column_count; col++) {
-                        left_chunk_withHash.GetVector(col).count++;
-                        left_chunk_withHash.GetVector(col).SetValue(hashNumber,
-                                                                    left_chunk.GetVector(col).GetValue(hashNumber));
+                        //left_chunk_withHash.GetVector(col).count++;
+                        //left_chunk_withHash.GetVector(col).SetValue(hashNumber,
+                        //                                            left_chunk.GetVector(col).GetValue(hashNumber));
+                        vec[col] = left_chunk.GetVector(col).GetValue(hashNumber);
                     }
-                    left_chunk_withHash.GetVector(left_chunk.column_count).count++;
-                    left_chunk_withHash.GetVector(left_chunk.column_count).SetValue(hashNumber, hash);
+                    //left_chunk_withHash.GetVector(left_chunk.column_count).count++;
+                    //left_chunk_withHash.GetVector(left_chunk.column_count).SetValue(hashNumber, hash);
                 }
-                state->left_data->Append(left_chunk_withHash);
+                //state->left_data->Append(left_chunk_withHash);
                 //state->left_data_partitioned->Append(left_chunk_withHash);
             }
 
-            state->left_hash_to_pos.resize(state->left_data->count);
-            state->left_hash_to_posSwap.resize(state->left_data->count);
-            for(index_t pos = 0 ; pos < state->left_data->count; pos++) {
-                state->left_hash_to_pos.at(pos).first = state->left_data->GetValue(state->left_data->column_count()-1, pos).value_.hash;
-                state->left_hash_to_pos.at(pos).second = pos;
-            }
+//            state->left_hash_to_pos.resize(state->left_data->count);
+//            state->left_hash_to_posSwap.resize(state->left_data->count);
+//            for(index_t pos = 0 ; pos < state->left_data->count; pos++) {
+//                state->left_hash_to_pos.at(pos).first = state->left_data->GetValue(state->left_data->column_count()-1, pos).value_.hash;
+//                state->left_hash_to_pos.at(pos).second = pos;
+//            }
 #if TIMER
             auto finish = std::chrono::high_resolution_clock::now();
             std::cerr << "Collecting the left side took: "
@@ -111,6 +117,9 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 #if TIMER
             start = std::chrono::high_resolution_clock::now();
 #endif
+            state->left_hash_to_DataSwap.resize(state->left_hash_to_Data.size());
+
+
             size_t shift = 0;
             for (size_t r = 0; r < runs; r++) {
                 RadixJoinSingleThreadedLeft(state, shift, r);
@@ -120,9 +129,13 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 //state->left_data = state->left_data_partitioned;
                 //state->left_data_partitioned = temp_left_data;
 
-                auto temp = state->left_hash_to_pos;
-                state->left_hash_to_pos = state->left_hash_to_posSwap;
-                state->left_hash_to_posSwap = temp;
+                //auto temp = state->left_hash_to_pos;
+                //state->left_hash_to_pos = state->left_hash_to_posSwap;
+                //state->left_hash_to_posSwap = temp;
+
+                auto temp = state->left_hash_to_Data;
+                state->left_hash_to_Data = state->left_hash_to_DataSwap;
+                state->left_hash_to_DataSwap = temp;
             }
 #if TIMER
             finish = std::chrono::high_resolution_clock::now();
@@ -170,29 +183,35 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 // Calculate the hash
                 auto hashes = make_unique<StaticVector<uint64_t>>();
                 dummy_hash_table->Hash(state->right_join_keys, *hashes);
+                index_t oldOffset = state->right_hash_to_Data.size();
+                state->right_hash_to_Data.resize(oldOffset + right_chunk.size(), {0,std::vector<Value>(right_chunk.column_count)});
                 // Now fill the right histogram
                 for (index_t hashNumber = 0; hashNumber < right_chunk.size(); hashNumber++) {
                     auto hash = hashes->GetValue(hashNumber);
                     size_t pos = hash.value_.hash & hash_bit_mask;
                     state->right_histogram->IncrementBucketCounter(0, pos);
+                    state->right_hash_to_Data.at(oldOffset + hashNumber).first = hash.value_.hash;
+                    auto &vec = state->right_hash_to_Data.at(oldOffset + hashNumber).second;
                     for (index_t col = 0; col < right_chunk.column_count; col++) {
-                        right_chunk_withHash.GetVector(col).count++;
-                        right_chunk_withHash.GetVector(col).SetValue(hashNumber,
-                                                                     right_chunk.GetVector(col).GetValue(hashNumber));
+                        //right_chunk_withHash.GetVector(col).count++;
+                        //right_chunk_withHash.GetVector(col).SetValue(hashNumber,
+                        //                                              right_chunk.GetVector(col).GetValue(hashNumber));
+                        vec[col] = right_chunk.GetVector(col).GetValue(hashNumber);
+
                     }
-                    right_chunk_withHash.GetVector(right_chunk.column_count).count++;
-                    right_chunk_withHash.GetVector(right_chunk.column_count).SetValue(hashNumber, hash);
+                    //right_chunk_withHash.GetVector(right_chunk.column_count).count++;
+                    //right_chunk_withHash.GetVector(right_chunk.column_count).SetValue(hashNumber, hash);
                 }
-                state->right_data->Append(right_chunk_withHash);
+                //state->right_data->Append(right_chunk_withHash);
                 //state->right_data_partitioned->Append(right_chunk_withHash);
             }
 
-            state->right_hash_to_pos.resize(state->right_data->count);
-            state->right_hash_to_posSwap.resize(state->right_data->count);
-            for(index_t pos = 0 ; pos < state->right_data->count; pos++) {
-                state->right_hash_to_pos.at(pos).first = state->right_data->GetValue(state->right_data->column_count()-1, pos).value_.hash;
-                state->right_hash_to_pos.at(pos).second = pos;
-            }
+            //state->right_hash_to_pos.resize(state->right_data->count);
+            //state->right_hash_to_posSwap.resize(state->right_data->count);
+            //for(index_t pos = 0 ; pos < state->right_data->count; pos++) {
+            //    state->right_hash_to_pos.at(pos).first = state->right_data->GetValue(state->right_data->column_count()-1, pos).value_.hash;
+            //    state->right_hash_to_pos.at(pos).second = pos;
+            //}
 
 #if TIMER
             auto finish = std::chrono::high_resolution_clock::now();
@@ -205,6 +224,8 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             start = std::chrono::high_resolution_clock::now();
 #endif
 
+            state->right_hash_to_DataSwap.resize(state->right_hash_to_Data.size());
+
             //! Start the partitioning phase with #runs runs and the bits in numberOfBits
             size_t shift = 0;
             for (size_t r = 0; r < runs; r++) {
@@ -215,9 +236,13 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 //state->right_data = state->right_data_partitioned;
                 //state->right_data_partitioned = temp_right_data;
 
-                auto temp = state->right_hash_to_pos;
-                state->right_hash_to_pos = state->right_hash_to_posSwap;
-                state->right_hash_to_posSwap = temp;
+                //auto temp = state->right_hash_to_pos;
+                //state->right_hash_to_pos = state->right_hash_to_posSwap;
+                //state->right_hash_to_posSwap = temp;
+
+                auto temp = state->right_hash_to_Data;
+                state->right_hash_to_Data = state->right_hash_to_DataSwap;
+                state->right_hash_to_DataSwap = temp;
             }
 #if TIMER
             finish = std::chrono::high_resolution_clock::now();
@@ -294,14 +319,14 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 }
             }
             assert(shrinked.size() == partitionsrelevant);
-            auto typesRight = state->right_data->types;
-            auto typesLeft = state->left_data->types;
-            for (index_t i = 0; i < typesLeft.size() - 1; i++) {
-                expected.push_back(typesLeft.at(i));
-            }
-            for (index_t i = 0; i < typesRight.size() - 1; i++) {
-                expected.push_back(typesRight.at(i));
-            }
+//            auto typesRight = state->right_data->types;
+//            auto typesLeft = state->left_data->types;
+//            for (index_t i = 0; i < typesLeft.size() - 1; i++) {
+//                expected.push_back(typesLeft.at(i));
+//            }
+//            for (index_t i = 0; i < typesRight.size() - 1; i++) {
+//                expected.push_back(typesRight.at(i));
+//            }
 #if TIMER
             auto finish = std::chrono::high_resolution_clock::now();
             std::cerr << "Setting the reduced partitions took: "
@@ -318,12 +343,12 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 #if SINGLETHREADED
             // Assume we have at least one pair in shrink
             ///////////////////////////////////////////////////////////////////
-            vector<TypeId> right;
-            for (index_t i = 0; i < state->right_data->types.size() - 1; i++) {
-                right.push_back(state->right_data->types.at(i));
-            }
+//            vector<TypeId> right;
+//            for (index_t i = 0; i < state->right_data->types.size() - 1; i++) {
+//                right.push_back(state->right_data->types.at(i));
+//            }
             DataChunk dataRight;
-            dataRight.Initialize(right);
+            dataRight.Initialize(right_typesGlobal);
             // The datachunk for the hashes of this partition
             DataChunk hashes;
             hashes.Initialize(dummy_hash_table->condition_types);
@@ -335,7 +360,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                     break;
                 }
                 //auto hash_table = make_unique<JoinHashTable>(conditions, right, duckdb::JoinType::RADIX);
-                auto hash_table = make_unique<RadixHashTable>(conditions, right, duckdb::JoinType::INNER, 2 *
+                auto hash_table = make_unique<RadixHashTable>(conditions, right_typesGlobal, duckdb::JoinType::INNER, 2 *
                                                                                                           dummy_hash_table->NextPow2_64(
                                                                                                                   shrinked[i].second.second -
                                                                                                                   shrinked[i].second.first));
@@ -359,13 +384,11 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                         dataRight.Reset();
                         pos = dataRight.size();
                     }
-                    index_t posInData = state->right_hash_to_pos.at(index).second;
-                    for (index_t col = 0; col < state->right_data->types.size() - 1; col++) {
+                    //index_t posInData = state->right_hash_to_pos.at(index).second;
+                    auto data = state->right_hash_to_Data.at(index).second;
+                    for (index_t col = 0; col < data.size(); col++) {
                         dataRight.data[col].count += 1;
-                        dataRight.data[col].SetValue(pos, state->right_data->GetValue(col, posInData));
-                    }
-                    if (index < shrinked[i].second.second - 1) {
-                        __builtin_prefetch(&state->right_data->GetChunk(state->right_hash_to_pos.at(index+1).second));
+                        dataRight.data[col].SetValue(pos, data[col]);
                     }
                 }
                 // After the end of this partition insert into hashtable
@@ -385,23 +408,26 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 
                 // Now continue with the left side
                 startI = std::chrono::high_resolution_clock::now();
-                DataChunk tempChunk;
-                tempChunk.Initialize(expected);
+//                DataChunk tempChunk;
+//                tempChunk.Initialize(expected);
                 DataChunk dataLeft;
-                vector<TypeId> left;
-                for (index_t i = 0; i < state->left_data->types.size() - 1; i++) {
-                    left.push_back(state->left_data->types.at(i));
-                }
-                dataLeft.Initialize(left);//state->left_data->types);
+//                vector<TypeId> left;
+//                for (index_t i = 0; i < state->left_data->types.size() - 1; i++) {
+//                    left.push_back(state->left_data->types.at(i));
+//                }
+                dataLeft.Initialize(left_typesGlobal);//state->left_data->types);
                 hashes.Initialize(hash_table->condition_types);
-                // left now contains all the information of the types the parent needs
-                for (auto &t : right) {
-                    left.push_back(t);
+                vector<TypeId> all;
+                for(auto &t : left_typesGlobal) {
+                    all.push_back(t);
                 }
-                //result.types = left;
-                DataChunk temp;
-                temp.Initialize(left);
-                temp.Reset();
+                for(auto &t : right_typesGlobal) {
+                    all.push_back(t);
+                }
+                result.types = all;
+//                DataChunk temp;
+//                temp.Initialize(all);
+//                temp.Reset();
                 for (index_t index = shrinked[i].first.first; index < shrinked[i].first.second; index++) {
                     index_t pos = dataLeft.size();
                     if (dataLeft.size() == STANDARD_VECTOR_SIZE) {
@@ -414,13 +440,11 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                         dataLeft.Reset();
                         pos = dataLeft.size();
                     }
-                    index_t posInData = state->left_hash_to_pos.at(index).second;
-                    for (index_t col = 0; col < state->left_data->types.size() - 1; col++) {
+                    //index_t posInData = state->left_hash_to_pos.at(index).second;
+                    auto data = state->left_hash_to_Data.at(index).second;
+                    for (index_t col = 0; col < data.size(); col++) {
                         dataLeft.data[col].count += 1;
-                        dataLeft.data[col].SetValue(pos, state->left_data->GetValue(col, posInData));
-                    }
-                    if (index < shrinked[i].first.second - 1) {
-                        __builtin_prefetch(&state->left_data->GetChunk(state->left_hash_to_pos.at(index+1).second));
+                        dataLeft.data[col].SetValue(pos, data[col]);
                     }
                 }
                 hashes.Reset();
@@ -471,124 +495,125 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
     }
 }
 
-void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *state,
-                                             vector<std::pair<std::pair<index_t, index_t>, std::pair<index_t, index_t>>> &shrinked,
-                                             vector<TypeId> &expected, std::atomic<index_t> &index) {
-    while (1) {
-        auto i = index++;
-        if (i >= shrinked.size()) {
-            break;
-        }
-        vector<TypeId> right;
-        for (index_t i = 0; i < state->right_data->types.size() - 1; i++) {
-            right.push_back(state->right_data->types.at(i));
-        }
-        auto start = std::chrono::high_resolution_clock::now();
-        //auto hash_table = make_unique<JoinHashTable>(conditions, right, duckdb::JoinType::RADIX);
-        auto hash_table = make_unique<RadixHashTable>(conditions, right, duckdb::JoinType::INNER, 2 *
-                                                                                                  dummy_hash_table->NextPow2_64(
-                                                                                                          shrinked[i].second.second -
-                                                                                                          shrinked[i].second.first));
-        //auto scanStructure = make_unique<JoinHashTable::ScanStructure>(*hash_table.get());
-        //auto scanStructure = make_unique<RadixHashTable::ScanStructure>(*hash_table.get());
-        DataChunk dataRight;
-        vector<TypeId> te;
-        for (auto &t : state->right_data->types) {
-            if (t != TypeId::HASH)
-                te.push_back(t);
-        }
-        dataRight.Initialize(te);
-        // The datachunk for the hashes of this partition
-        DataChunk hashes;
-        hashes.Initialize(hash_table->condition_types);
-        for (index_t index = shrinked[i].second.first; index < shrinked[i].second.second; index++) {
-            index_t pos = dataRight.size();
-            if (pos == STANDARD_VECTOR_SIZE) {
-                // If the datachunk is full, then insert it into the hashtable
-                // Make the hashes
-                hashes.Reset();
-                ExpressionExecutor executorR(dataRight);
-                for (index_t col = 0; col < conditions.size(); col++) {
-                    executorR.ExecuteExpression(*conditions[col].right, hashes.data[col]);
-                }
-                // Insert into the hashtable
-                hash_table->Build(hashes, dataRight);
-                // Reset the datachunk for next iteration
-                dataRight.Reset();
-                pos = dataRight.size();
-            }
-            for (index_t col = 0; col < state->right_data->types.size() - 1; col++) {
-                dataRight.data[col].count += 1;
-                dataRight.data[col].SetValue(pos, state->right_data->GetValue(col, index));
-            }
-        }
-        // After the end of this partition insert into hashtable
-        // Reset the hashes
-
-        hashes.Reset();
-        ExpressionExecutor executorR(dataRight);
-        for (index_t j = 0; j < conditions.size(); j++) {
-            executorR.ExecuteExpression(*conditions[j].right, hashes.data[j]);
-        }
-        // Insert into the hashtable
-        hash_table->Build(hashes, dataRight);
-
-        auto finish = std::chrono::high_resolution_clock::now();
-        timeBuild += std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count();
-        //// Up to this point, the right side is in the hashtable
-
-        // Now continue with the left side
-        start = std::chrono::high_resolution_clock::now();
-        DataChunk tempChunk;
-        tempChunk.Initialize(expected);
-        DataChunk dataLeft;
-        vector<TypeId> left;
-        for (index_t i = 0; i < state->left_data->types.size() - 1; i++) {
-            left.push_back(state->left_data->types.at(i));
-        }
-        dataLeft.Initialize(left);//state->left_data->types);
-        hashes.Initialize(hash_table->condition_types);
-        // left now contains all the information of the types the parent needs
-        for (auto &t : right) {
-            left.push_back(t);
-        }
-        result.types = left;
-        //results[i].types = left;
-        DataChunk temp;
-        temp.Initialize(left);
-        temp.Reset();
-        for (index_t index = shrinked[i].first.first; index < shrinked[i].first.second; index++) {
-            index_t pos = dataLeft.size();
-            if (dataLeft.size() == STANDARD_VECTOR_SIZE) {
-                hashes.Reset();
-                ExpressionExecutor executorL(dataLeft);
-                for (index_t j = 0; j < conditions.size(); j++) {
-                    executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
-                }
-                hash_table->Probe(hashes, dataLeft, result);
-                dataLeft.Reset();
-                pos = dataLeft.size();
-            }
-            for (index_t col = 0; col < state->left_data->types.size() - 1; col++) {
-                dataLeft.data[col].count += 1;
-                dataLeft.data[col].SetValue(pos, state->left_data->GetValue(col, index));
-            }
-        }
-        hashes.Reset();
-        ExpressionExecutor executorL(dataLeft);
-        for (index_t j = 0; j < conditions.size(); j++) {
-            executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
-        }
-
-        hash_table->Probe(hashes, dataLeft, result);
-        finish = std::chrono::high_resolution_clock::now();
-        timeProbe += std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count();
-    }
-}
+//void PhysicalRadixJoin::PerformBuildAndProbe(PhysicalRadixJoinOperatorState *state,
+//                                             vector<std::pair<std::pair<index_t, index_t>, std::pair<index_t, index_t>>> &shrinked,
+//                                             vector<TypeId> &expected, std::atomic<index_t> &index) {
+//    while (1) {
+//        auto i = index++;
+//        if (i >= shrinked.size()) {
+//            break;
+//        }
+//        vector<TypeId> right;
+//        for (index_t i = 0; i < state->right_data->types.size() - 1; i++) {
+//            right.push_back(state->right_data->types.at(i));
+//        }
+//        auto start = std::chrono::high_resolution_clock::now();
+//        //auto hash_table = make_unique<JoinHashTable>(conditions, right, duckdb::JoinType::RADIX);
+//        auto hash_table = make_unique<RadixHashTable>(conditions, right, duckdb::JoinType::INNER, 2 *
+//                                                                                                  dummy_hash_table->NextPow2_64(
+//                                                                                                          shrinked[i].second.second -
+//                                                                                                          shrinked[i].second.first));
+//        //auto scanStructure = make_unique<JoinHashTable::ScanStructure>(*hash_table.get());
+//        //auto scanStructure = make_unique<RadixHashTable::ScanStructure>(*hash_table.get());
+//        DataChunk dataRight;
+//        vector<TypeId> te;
+//        for (auto &t : state->right_data->types) {
+//            if (t != TypeId::HASH)
+//                te.push_back(t);
+//        }
+//        dataRight.Initialize(te);
+//        // The datachunk for the hashes of this partition
+//        DataChunk hashes;
+//        hashes.Initialize(hash_table->condition_types);
+//        for (index_t index = shrinked[i].second.first; index < shrinked[i].second.second; index++) {
+//            index_t pos = dataRight.size();
+//            if (pos == STANDARD_VECTOR_SIZE) {
+//                // If the datachunk is full, then insert it into the hashtable
+//                // Make the hashes
+//                hashes.Reset();
+//                ExpressionExecutor executorR(dataRight);
+//                for (index_t col = 0; col < conditions.size(); col++) {
+//                    executorR.ExecuteExpression(*conditions[col].right, hashes.data[col]);
+//                }
+//                // Insert into the hashtable
+//                hash_table->Build(hashes, dataRight);
+//                // Reset the datachunk for next iteration
+//                dataRight.Reset();
+//                pos = dataRight.size();
+//            }
+//            for (index_t col = 0; col < state->right_data->types.size() - 1; col++) {
+//                dataRight.data[col].count += 1;
+//                dataRight.data[col].SetValue(pos, state->right_data->GetValue(col, index));
+//            }
+//        }
+//        // After the end of this partition insert into hashtable
+//        // Reset the hashes
+//
+//        hashes.Reset();
+//        ExpressionExecutor executorR(dataRight);
+//        for (index_t j = 0; j < conditions.size(); j++) {
+//            executorR.ExecuteExpression(*conditions[j].right, hashes.data[j]);
+//        }
+//        // Insert into the hashtable
+//        hash_table->Build(hashes, dataRight);
+//
+//        auto finish = std::chrono::high_resolution_clock::now();
+//        timeBuild += std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count();
+//        //// Up to this point, the right side is in the hashtable
+//
+//        // Now continue with the left side
+//        start = std::chrono::high_resolution_clock::now();
+////        DataChunk tempChunk;
+////        tempChunk.Initialize(expected);
+//        DataChunk dataLeft;
+//        vector<TypeId> left;
+//        for (index_t i = 0; i < state->left_data->types.size() - 1; i++) {
+//            left.push_back(state->left_data->types.at(i));
+//        }
+//        dataLeft.Initialize(left);//state->left_data->types);
+//        hashes.Initialize(hash_table->condition_types);
+//        // left now contains all the information of the types the parent needs
+//        for (auto &t : right) {
+//            left.push_back(t);
+//        }
+//        result.types = left;
+//        //results[i].types = left;
+////        DataChunk temp;
+////        temp.Initialize(left);
+////        temp.Reset();
+//        for (index_t index = shrinked[i].first.first; index < shrinked[i].first.second; index++) {
+//            index_t pos = dataLeft.size();
+//            if (dataLeft.size() == STANDARD_VECTOR_SIZE) {
+//                hashes.Reset();
+//                ExpressionExecutor executorL(dataLeft);
+//                for (index_t j = 0; j < conditions.size(); j++) {
+//                    executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
+//                }
+//                hash_table->Probe(hashes, dataLeft, result);
+//                dataLeft.Reset();
+//                pos = dataLeft.size();
+//            }
+//            for (index_t col = 0; col < state->left_data->types.size() - 1; col++) {
+//                dataLeft.data[col].count += 1;
+//                dataLeft.data[col].SetValue(pos, state->left_data->GetValue(col, index));
+//            }
+//        }
+//        hashes.Reset();
+//        ExpressionExecutor executorL(dataLeft);
+//        for (index_t j = 0; j < conditions.size(); j++) {
+//            executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
+//        }
+//
+//        hash_table->Probe(hashes, dataLeft, result);
+//        finish = std::chrono::high_resolution_clock::now();
+//        timeProbe += std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count();
+//    }
+//}
 
 void PhysicalRadixJoin::FillPartitions(PhysicalRadixJoinOperatorState *state, std::atomic<index_t> &index) {
+    index_t i = 0;
     while (1) {
-        auto i = index++;
+        //auto i = index++;
         if (i >= state->old_left_histogram->numberOfPartitions) {
             break;
         }
@@ -614,6 +639,7 @@ void PhysicalRadixJoin::FillPartitions(PhysicalRadixJoinOperatorState *state, st
             partitions[i * state->old_right_histogram->numberOfBucketsPerPartition + j].second.second = std::get<1>(
                     rangeRight);
         }
+        i++;
     }
 }
 
@@ -623,7 +649,7 @@ void PhysicalRadixJoin::RadixJoinPartitionWorkerLeft(PhysicalRadixJoinOperatorSt
     // Iterate over the data given to this thread
     for (index_t toOrder = startOfPartitions; toOrder < endOfPartitions; toOrder++) {
         // Get the hash of the element
-        auto hash = state->left_hash_to_pos.at(toOrder).first;//state->left_data->GetValue(state->left_data->column_count() - 1,
+        auto hash = state->left_hash_to_Data.at(toOrder).first;//state->left_hash_to_pos.at(toOrder).first;//state->left_data->GetValue(state->left_data->column_count() - 1,
                     //                           toOrder);//state->left_hashes[toOrder / STANDARD_VECTOR_SIZE]->GetValue(toOrder % STANDARD_VECTOR_SIZE);
         // Get the partition the element belongs to
        // auto partition = ((hash.value_.hash & bitmask) >> shift);
@@ -641,7 +667,8 @@ void PhysicalRadixJoin::RadixJoinPartitionWorkerLeft(PhysicalRadixJoinOperatorSt
         }
         // Get the position where to insert from the old left histogram
         index_t position = state->old_left_histogram->getInsertPlace(partitionNumber, partition);
-        state->left_hash_to_posSwap.at(position) = state->left_hash_to_pos.at(toOrder);
+        state->left_hash_to_DataSwap.at(position) = state->left_hash_to_Data.at(toOrder);
+        //state->left_hash_to_posSwap.at(position) = state->left_hash_to_pos.at(toOrder);
 //        for (index_t col = 0; col < state->left_data->types.size(); col++) {
 //            state->left_data_partitioned->SetValue(col, position, state->left_data->GetValue(col, toOrder));
 //        }
@@ -652,7 +679,7 @@ void PhysicalRadixJoin::RadixJoinPartitionWorkerRight(PhysicalRadixJoinOperatorS
                                                       index_t endOfPartitions, size_t bitmask, size_t bitMaskNextRun,
                                                       size_t shift, size_t run, size_t partitionNumber) {
     for (index_t toOrder = startOfPartitions; toOrder < endOfPartitions; toOrder++) {
-        auto hash = state->right_hash_to_pos.at(toOrder).first;//state->right_data->GetValue(state->right_data->column_count() - 1,
+        auto hash = state->right_hash_to_Data.at(toOrder).first;//state->right_hash_to_pos.at(toOrder).first;//state->right_data->GetValue(state->right_data->column_count() - 1,
                     //                            toOrder);//state->right_hashes[toOrder / STANDARD_VECTOR_SIZE]->GetValue(toOrder % STANDARD_VECTOR_SIZE);
         auto partition = ((hash & bitmask) >> shift);
         assert(partition >= 0 && partition < state->old_right_histogram->numberOfPartitions *
@@ -667,7 +694,8 @@ void PhysicalRadixJoin::RadixJoinPartitionWorkerRight(PhysicalRadixJoinOperatorS
         }
         // Get the position where to insert from the old right histogram
         index_t position = state->old_right_histogram->getInsertPlace(partitionNumber, partition);
-        state->right_hash_to_posSwap.at(position) = state->right_hash_to_pos.at(toOrder);
+        //state->right_hash_to_posSwap.at(position) = state->right_hash_to_pos.at(toOrder);
+        state->right_hash_to_DataSwap.at(position) = state->right_hash_to_Data.at(toOrder);
         //for (index_t col = 0; col < state->right_data->types.size(); col++) {
         //    state->right_data_partitioned->SetValue(col, position, state->right_data->GetValue(col, toOrder));
         //}
