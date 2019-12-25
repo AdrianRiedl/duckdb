@@ -4,10 +4,10 @@
 
 #include <iostream>
 #include <thread>
-#include <locale.h>
 #include <fstream>
 
 #include "duckdb/execution/operator/join/physical_radix_join.hpp"
+//#include "duckdb/compressing/lz4.h"
 #include "duckdb/common/vector_operations/vector_operations.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/common/types/static_vector.hpp"
@@ -31,7 +31,15 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
     auto startOp = std::chrono::high_resolution_clock::now();
     auto state = reinterpret_cast<PhysicalRadixJoinOperatorState *>(state_);
     auto left_typesGlobal = children[0]->GetTypes();
+    index_t leftSize = 0;
+    for(auto &t : left_typesGlobal) {
+        leftSize += GetTypeIdSize(t);
+    }
     auto right_typesGlobal = children[1]->GetTypes();
+    index_t rightSize = 0;
+    for(auto &t : right_typesGlobal) {
+        rightSize += GetTypeIdSize(t);
+    }
     if (!state->initialized) {
         if (firstCall) {
             startOp = std::chrono::high_resolution_clock::now();
@@ -133,9 +141,13 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 //state->left_hash_to_pos = state->left_hash_to_posSwap;
                 //state->left_hash_to_posSwap = temp;
 
-                auto temp = state->left_hash_to_Data;
-                state->left_hash_to_Data = state->left_hash_to_DataSwap;
-                state->left_hash_to_DataSwap = temp;
+                //auto &temp = state->left_hash_to_Data;
+                //state->left_hash_to_Data = state->left_hash_to_DataSwap;
+                //state->left_hash_to_DataSwap = temp;
+
+
+                state->left_hash_to_Data.swap(state->left_hash_to_DataSwap);
+
             }
 #if TIMER
             finish = std::chrono::high_resolution_clock::now();
@@ -240,9 +252,12 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 //state->right_hash_to_pos = state->right_hash_to_posSwap;
                 //state->right_hash_to_posSwap = temp;
 
-                auto temp = state->right_hash_to_Data;
-                state->right_hash_to_Data = state->right_hash_to_DataSwap;
-                state->right_hash_to_DataSwap = temp;
+                //auto &temp = state->right_hash_to_Data;
+                //state->right_hash_to_Data = state->right_hash_to_DataSwap;
+                //state->right_hash_to_DataSwap = temp;
+
+                state->right_hash_to_Data.swap(state->right_hash_to_DataSwap);
+
             }
 #if TIMER
             finish = std::chrono::high_resolution_clock::now();
