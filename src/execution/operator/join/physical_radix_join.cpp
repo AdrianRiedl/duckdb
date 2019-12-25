@@ -125,11 +125,12 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 #if TIMER
             start = std::chrono::high_resolution_clock::now();
 #endif
-            state->left_hash_to_DataSwap.resize(state->left_hash_to_Data.size());
+
 
 
             size_t shift = 0;
             for (size_t r = 0; r < runs; r++) {
+                state->left_hash_to_DataSwap.resize(state->left_hash_to_Data.size());
                 RadixJoinSingleThreadedLeft(state, shift, r);
                 shift += numberOfBits[r];
 
@@ -142,11 +143,11 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 //state->left_hash_to_posSwap = temp;
 
                 //auto &temp = state->left_hash_to_Data;
-                //state->left_hash_to_Data = state->left_hash_to_DataSwap;
+                state->left_hash_to_Data = state->left_hash_to_DataSwap;
                 //state->left_hash_to_DataSwap = temp;
 
 
-                state->left_hash_to_Data.swap(state->left_hash_to_DataSwap);
+                //state->left_hash_to_Data.swap(state->left_hash_to_DataSwap);
 
             }
 #if TIMER
@@ -236,11 +237,12 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             start = std::chrono::high_resolution_clock::now();
 #endif
 
-            state->right_hash_to_DataSwap.resize(state->right_hash_to_Data.size());
+            //state->right_hash_to_DataSwap.resize(state->right_hash_to_Data.size());
 
             //! Start the partitioning phase with #runs runs and the bits in numberOfBits
             size_t shift = 0;
             for (size_t r = 0; r < runs; r++) {
+                state->right_hash_to_DataSwap.resize(state->right_hash_to_Data.size());
                 RadixJoinSingleThreadedRight(state, shift, r);
                 shift += numberOfBits[r];
 
@@ -253,10 +255,10 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 //state->right_hash_to_posSwap = temp;
 
                 //auto &temp = state->right_hash_to_Data;
-                //state->right_hash_to_Data = state->right_hash_to_DataSwap;
+                state->right_hash_to_Data = state->right_hash_to_DataSwap;
                 //state->right_hash_to_DataSwap = temp;
 
-                state->right_hash_to_Data.swap(state->right_hash_to_DataSwap);
+                //state->right_hash_to_Data.swap(state->right_hash_to_DataSwap);
 
             }
 #if TIMER
