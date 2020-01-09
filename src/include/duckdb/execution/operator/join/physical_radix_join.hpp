@@ -6,6 +6,7 @@
 #pragma once
 
 #include <iostream>
+#include <utility>
 #include "duckdb/execution/radix_hashtable.hpp"
 #include "duckdb/common/types/chunk_collection.hpp"
 #include "duckdb/execution/operator/join/physical_comparison_join.hpp"
@@ -15,8 +16,16 @@
 #define TIMER 1
 #define TIMERWHOLE 1
 #define PREFETCH 0
+#define CHUNKSIZE 10000
 
 namespace duckdb {
+
+class Entry {
+    public:
+    uint64_t hash;
+    // I decided to use a storage bigger than the data I use
+    uint64_t data[4];
+};
 
 class Histogram {
     public:
@@ -87,7 +96,7 @@ class Histogram {
             std::cout << "Should never happen" << std::endl;
             Range();
         }
-        auto[start, end] = getParition(partition, bucket);
+        auto [start, end] = getParition(partition, bucket);
         return {start, end, histogram[partition][bucket]};
     }
 
@@ -144,6 +153,115 @@ class Histogram {
     }
 };
 
+class EntryStorage {
+    public:
+    explicit EntryStorage(size_t chunkSize_, size_t payloadLength_, std::vector<TypeId> &types_) : chunkSize(
+            chunkSize_), payloadLength(payloadLength_), types(std::move(types_)), containedElements(0),
+                                                                                                   tuplesOnActChunk(0),
+                                                                                                   lastChunk(0) {
+        assert(payloadLength_ <= 4 * sizeof(uint64_t));
+        //unique_ptr<Entry> dataChunk = make_unique<Entry>(calloc(chunkSize, sizeof(Entry)));
+        auto *dataChunk = static_cast<Entry *>(calloc(chunkSize, sizeof(Entry)));
+        data_chunks.push_back(dataChunk);
+    }
+
+    ~EntryStorage() {
+        for (auto d : data_chunks) {
+            free(d);
+        }
+    }
+
+    // We need the hashes of the tuples and the data. The histogram is filled before.
+    void insert(unique_ptr<StaticVector<uint64_t>> &hashes, DataChunk &chunk) {
+        auto lastChunkPointer = data_chunks[lastChunk];
+        // set the pointer to the newest writing position
+        lastChunkPointer += tuplesOnActChunk;
+        for (index_t chunkIterator = 0; chunkIterator < chunk.size(); chunkIterator++) {
+            // First check, if there is still some space left to put the entry
+            if (tuplesOnActChunk == chunkSize) {
+                // In this case the actual chunk is full
+                // Allocate a new chunk for the data
+                auto *dataChunk = static_cast<Entry *>(calloc(chunkSize, sizeof(Entry)));
+                data_chunks.push_back(dataChunk);
+                tuplesOnActChunk = 0;
+                lastChunk = data_chunks.size() - 1;
+                lastChunkPointer = data_chunks[lastChunk];
+                lastChunkPointer += tuplesOnActChunk;
+            }
+            auto hash = hashes->GetValue(chunkIterator);
+            // chunk.GetVector(chunk.column_count - 1).GetValue(chunkIterator);
+            // set the hashvalue
+            lastChunkPointer->hash = hash.value_.hash;
+            // set the values
+            for (index_t col = 0; col < chunk.column_count; col++) {
+                lastChunkPointer->data[col] = chunk.GetVector(col).GetValue(chunkIterator).value_.bigint;
+            }
+            tuplesOnActChunk++;
+            containedElements++;
+            lastChunkPointer++;
+        }
+    }
+
+    Entry GetEntry(size_t pos) {
+        size_t chunkNumber = pos / chunkSize;
+        size_t offset = pos % chunkSize;
+        return *(data_chunks[chunkNumber] + offset);
+    }
+
+    void SetEntry(Entry e, size_t pos) {
+        size_t chunkNumber = pos / chunkSize;
+        size_t offset = pos % chunkSize;
+        *(data_chunks[chunkNumber] + offset) = e;
+    }
+
+    string ToString() {
+        string s;
+        s += to_string(chunkSize) + " " + to_string(payloadLength) + " " + to_string(containedElements) + "\n";
+        for (size_t i = 0; i < containedElements; i++) {
+            auto e = GetEntry(i);
+            s += to_string(e.hash) + " " + to_string(e.data[0]) + " " + to_string(e.data[1]) + " " +
+                 to_string(e.data[2]) + " " + to_string(e.data[3]) + "\n";
+        }
+        return s;
+    }
+
+    void Print() {
+        Printer::Print(ToString());
+    }
+
+    std::vector<Value> ExtractValues(size_t pos) {
+        auto entry = GetEntry(pos);
+        std::vector<Value> res;
+        for(size_t i = 0; i< types.size(); i++) { //auto &t : types) {
+            auto t = types[i];
+            auto size = GetTypeIdSize(t);
+            Value newValue;
+            newValue.type = t;
+            newValue.is_null = false;
+            newValue.value_.bigint = entry.data[i];
+            res.push_back(newValue);
+        }
+        return res;
+    }
+
+    private:
+    // The amount of Entry for each chunk in this EntryStorage
+    size_t chunkSize;
+    // The length of the types the tuples has as attributes (until now just for check)
+    size_t payloadLength;
+    // The types to enable the correct reinterpretation
+    std::vector<TypeId> types;
+    // Number of the elements stored in the EntryStorage
+    size_t containedElements;
+    // Index of the next free entry to get faster inserts
+    size_t tuplesOnActChunk;
+    // Last chunk in vector (index starting at 0)
+    size_t lastChunk;
+
+    // Collection of the datachunks where I store the Entrys to
+    std::vector<Entry *> data_chunks;
+};
+
 class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
     public:
     PhysicalRadixJoinOperatorState(PhysicalOperator *left, PhysicalOperator *right) : PhysicalOperatorState(left),
@@ -174,6 +292,11 @@ class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
     std::vector<std::pair<uint64_t, std::vector<Value>>> left_hash_to_Data;
     std::vector<std::pair<uint64_t, std::vector<Value>>> left_hash_to_DataSwap;
 
+    unique_ptr<EntryStorage> left_tuples;
+    unique_ptr<EntryStorage> left_tuplesSwap;
+    //EntryStorage *left_tuples;
+    //EntryStorage *left_tuplesSwap;
+
     /// Right side
     //! Temporary storage for the actual extraction of the join keys on the right side
     DataChunk right_join_keys;
@@ -193,6 +316,11 @@ class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
     std::vector<std::pair<uint64_t, std::vector<Value>>> right_hash_to_Data;
     std::vector<std::pair<uint64_t, std::vector<Value>>> right_hash_to_DataSwap;
 
+    unique_ptr<EntryStorage> right_tuples;
+    unique_ptr<EntryStorage> right_tuplesSwap;
+    //EntryStorage *right_tuples;
+    //EntryStorage *right_tuplesSwap;
+
     //! Whether or not the operator has already started
     bool initialized;
 };
@@ -202,10 +330,12 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
     public:
     PhysicalRadixJoin(LogicalOperator &op, unique_ptr<PhysicalOperator> left, unique_ptr<PhysicalOperator> right,
                       vector<JoinCondition> cond, JoinType join_type);
+
     ~PhysicalRadixJoin() {
         std::cerr << "Building ht took: " << timeBuild << std::endl;
         std::cerr << "Probing ht took: " << timeProbe << std::endl;
     }
+
     // TODO
     //! As in PhysicalHashJoin (to initialize the important stuff
     unique_ptr<RadixHashTable> dummy_hash_table;
