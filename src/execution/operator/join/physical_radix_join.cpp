@@ -101,6 +101,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 state->left_tuples->insert(hashes, left_chunk);
                 state->left_tuplesSwap->insert(hashes, left_chunk);
             }
+            //state->left_tuples->Print();
 #if TIMER
             auto finish = std::chrono::high_resolution_clock::now();
             std::cerr << "Collecting the left side took: "
@@ -278,19 +279,11 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             for (auto &p : partitions) {
                 if (p.first.second - p.first.first != 0 && p.second.second - p.second.first != 0) {
                     partitionsrelevant++;
-                    // std::cout << p.second.first << " " << p.second.second << " size: " << (p.second.second - p.second.first) << std::endl;
                     shrinked.push_back(p);
                 }
             }
             assert(shrinked.size() == partitionsrelevant);
-//            auto typesRight = state->right_data->types;
-//            auto typesLeft = state->left_data->types;
-//            for (index_t i = 0; i < typesLeft.size() - 1; i++) {
-//                expected.push_back(typesLeft.at(i));
-//            }
-//            for (index_t i = 0; i < typesRight.size() - 1; i++) {
-//                expected.push_back(typesRight.at(i));
-//            }
+
 #if TIMER
             auto finish = std::chrono::high_resolution_clock::now();
             std::cerr << "Setting the reduced partitions took: "
@@ -307,10 +300,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 #if SINGLETHREADED
             // Assume we have at least one pair in shrink
             ///////////////////////////////////////////////////////////////////
-//            vector<TypeId> right;
-//            for (index_t i = 0; i < state->right_data->types.size() - 1; i++) {
-//                right.push_back(state->right_data->types.at(i));
-//            }
+
             DataChunk dataRight;
             dataRight.Initialize(right_typesGlobal);
             // The datachunk for the hashes of this partition
@@ -371,7 +361,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 startI = std::chrono::high_resolution_clock::now();
                 DataChunk dataLeft;
 
-                dataLeft.Initialize(left_typesGlobal);//state->left_data->types);
+                dataLeft.Initialize(left_typesGlobal);
                 hashes.Initialize(hash_table->condition_types);
                 vector<TypeId> all;
                 for (auto &t : left_typesGlobal) {
@@ -381,9 +371,6 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                     all.push_back(t);
                 }
                 result.types = all;
-//                DataChunk temp;
-//                temp.Initialize(all);
-//                temp.Reset();
                 for (index_t index = shrinked[i].first.first; index < shrinked[i].first.second; index++) {
                     index_t pos = dataLeft.size();
                     if (dataLeft.size() == STANDARD_VECTOR_SIZE) {
@@ -413,7 +400,6 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 timeProbe += std::chrono::duration_cast<std::chrono::nanoseconds>(finishI - startI).count();
             }
             ///////////////////////////////////////////////////////////////////
-            //PerformBuildAndProbe(state, shrinked, expected, index);
 #else
             vector<std::thread> threads;
             for (size_t i = 0; i < concurentThreadsSupported; i++) {
@@ -487,12 +473,12 @@ void PhysicalRadixJoin::RadixJoinPartitionWorkerLeft(PhysicalRadixJoinOperatorSt
     // Iterate over the data given to this thread
     for (index_t toOrder = startOfPartitions; toOrder < endOfPartitions; toOrder++) {
         auto entry = state->left_tuples->GetEntry(toOrder);
-        auto partition = ((entry.hash & bitmask) >> shift);
+        auto partition = ((std::get<0>(entry) & bitmask) >> shift);
         assert(partition >= 0 && partition < state->old_left_histogram->numberOfPartitions *
                                              state->old_left_histogram->numberOfBucketsPerPartition);
         if (run < runs - 1) {
             // Get the partition in the next run
-            auto partitionNextRun = (entry.hash & bitMaskNextRun) >> (shift + numberOfBits[run]);
+            auto partitionNextRun = (std::get<0>(entry) & bitMaskNextRun) >> (shift + numberOfBits[run]);
             // Increment the counter for the partitionNextRun in partition
             state->left_histogram->IncrementBucketCounter(
                     partitionNumber * state->old_left_histogram->numberOfBucketsPerPartition + partition,
@@ -509,12 +495,12 @@ void PhysicalRadixJoin::RadixJoinPartitionWorkerRight(PhysicalRadixJoinOperatorS
                                                       size_t shift, size_t run, size_t partitionNumber) {
     for (index_t toOrder = startOfPartitions; toOrder < endOfPartitions; toOrder++) {
         auto entry = state->right_tuples->GetEntry(toOrder);
-        auto partition = ((entry.hash & bitmask) >> shift);
+        auto partition = ((std::get<0>(entry) & bitmask) >> shift);
         assert(partition >= 0 && partition < state->old_right_histogram->numberOfPartitions *
                                              state->old_right_histogram->numberOfBucketsPerPartition);
         if (run < runs - 1) {
             // Get the partition in the next run
-            auto partitionNextRun = (entry.hash & bitMaskNextRun) >> (shift + numberOfBits[run]);
+            auto partitionNextRun = (std::get<0>(entry) & bitMaskNextRun) >> (shift + numberOfBits[run]);
             // Increment the counter for the partitionNextRun in partition
             state->right_histogram->IncrementBucketCounter(
                     partitionNumber * state->old_right_histogram->numberOfBucketsPerPartition + partition,

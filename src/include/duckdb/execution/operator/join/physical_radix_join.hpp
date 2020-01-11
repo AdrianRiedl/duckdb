@@ -16,7 +16,7 @@
 #define TIMER 1
 #define TIMERWHOLE 1
 #define PREFETCH 0
-#define CHUNKSIZE 10000
+#define CHUNKSIZE 20000
 
 namespace duckdb {
 
@@ -96,7 +96,7 @@ class Histogram {
             std::cout << "Should never happen" << std::endl;
             Range();
         }
-        auto [start, end] = getParition(partition, bucket);
+        auto[start, end] = getParition(partition, bucket);
         return {start, end, histogram[partition][bucket]};
     }
 
@@ -156,13 +156,15 @@ class Histogram {
 class EntryStorage {
     public:
     explicit EntryStorage(size_t chunkSize_, size_t payloadLength_, std::vector<TypeId> &types_) : chunkSize(
-            chunkSize_), payloadLength(payloadLength_), types(std::move(types_)), containedElements(0),
-                                                                                                   tuplesOnActChunk(0),
+            chunkSize_), payloadLength(payloadLength_), types(types_), containedElements(0), tuplesOnActChunk(0),
                                                                                                    lastChunk(0) {
         assert(payloadLength_ <= 4 * sizeof(uint64_t));
-        //unique_ptr<Entry> dataChunk = make_unique<Entry>(calloc(chunkSize, sizeof(Entry)));
-        auto *dataChunk = static_cast<Entry *>(calloc(chunkSize, sizeof(Entry)));
+        auto *dataChunk = static_cast<uint8_t *>(calloc(chunkSize, 8 + payloadLength));
         data_chunks.push_back(dataChunk);
+        for (auto &t : types) {
+            Value v;
+            res.push_back(v);
+        }
     }
 
     ~EntryStorage() {
@@ -173,54 +175,147 @@ class EntryStorage {
 
     // We need the hashes of the tuples and the data. The histogram is filled before.
     void insert(unique_ptr<StaticVector<uint64_t>> &hashes, DataChunk &chunk) {
-        auto lastChunkPointer = data_chunks[lastChunk];
+        uint8_t *lastChunkPointer = data_chunks[lastChunk];
         // set the pointer to the newest writing position
-        lastChunkPointer += tuplesOnActChunk;
+        lastChunkPointer += tuplesOnActChunk * (8 + payloadLength);
         for (index_t chunkIterator = 0; chunkIterator < chunk.size(); chunkIterator++) {
             // First check, if there is still some space left to put the entry
             if (tuplesOnActChunk == chunkSize) {
                 // In this case the actual chunk is full
                 // Allocate a new chunk for the data
-                auto *dataChunk = static_cast<Entry *>(calloc(chunkSize, sizeof(Entry)));
+                auto *dataChunk = static_cast<uint8_t *>(calloc(chunkSize, sizeof(Entry)));
                 data_chunks.push_back(dataChunk);
                 tuplesOnActChunk = 0;
                 lastChunk = data_chunks.size() - 1;
                 lastChunkPointer = data_chunks[lastChunk];
-                lastChunkPointer += tuplesOnActChunk;
+                lastChunkPointer += tuplesOnActChunk * (8 + payloadLength);
             }
             auto hash = hashes->GetValue(chunkIterator);
             // chunk.GetVector(chunk.column_count - 1).GetValue(chunkIterator);
             // set the hashvalue
-            lastChunkPointer->hash = hash.value_.hash;
+            memcpy(lastChunkPointer, &hash.value_.hash, 8);
+            lastChunkPointer += 8;
+            //lastChunkPointer->hash = hash.value_.hash;
             // set the values
             for (index_t col = 0; col < chunk.column_count; col++) {
-                lastChunkPointer->data[col] = chunk.GetVector(col).GetValue(chunkIterator).value_.bigint;
+                auto value = chunk.GetVector(col).GetValue(chunkIterator);
+                auto type = types[col];
+                auto size = GetTypeIdSize(type);
+                switch (type) {
+                    // todo
+                    case TypeId::SMALLINT: {
+                        memcpy(lastChunkPointer, &value.value_.smallint, size);
+                        lastChunkPointer += size;
+                        break;
+                    }
+                    case TypeId::INTEGER: {
+                        memcpy(lastChunkPointer, &value.value_.integer, size);
+                        lastChunkPointer += size;
+                        break;
+                    }
+                    case TypeId::BIGINT: {
+                        memcpy(lastChunkPointer, &value.value_.bigint, size);
+                        lastChunkPointer += size;
+                        break;
+                    }
+                    default:
+                        throw "NotImplementedYet - Default";
+                }
+                //memcpy(lastChunkPointer, &chunk.GetVector(col).GetValue(chunkIterator).value_.bigint, )
+                //lastChunkPointer->data[col] = chunk.GetVector(col).GetValue(chunkIterator).value_.bigint;
             }
             tuplesOnActChunk++;
             containedElements++;
-            lastChunkPointer++;
+            //lastChunkPointer++;
         }
     }
 
-    Entry GetEntry(size_t pos) {
+    std::pair<uint64_t, std::vector<Value> &> GetEntry(size_t pos) {
         size_t chunkNumber = pos / chunkSize;
         size_t offset = pos % chunkSize;
-        return *(data_chunks[chunkNumber] + offset);
+        uint8_t *blockStart = data_chunks[chunkNumber];
+        uint64_t hash;
+        blockStart += offset * (8 + payloadLength);
+        memcpy(&hash, blockStart, 8);
+        blockStart += 8;
+        for (index_t col = 0; col < types.size(); col++) {//auto &type : types) {
+            auto &type = types[col];
+            auto size = GetTypeIdSize(type);
+            Value &v = res[col];
+            v.type = type;
+            switch (type) {
+                // todo
+                case TypeId::SMALLINT: {
+                    memcpy(&v.value_.smallint, blockStart, size);
+                    v.is_null = false;
+                    //res.push_back(v);
+                    blockStart += size;
+                    break;
+                }
+                case TypeId::INTEGER: {
+                    memcpy(&v.value_.integer, blockStart, size);
+                    v.is_null = false;
+                    //res.push_back(v);
+                    blockStart += size;
+                    break;
+                }
+                case TypeId::BIGINT: {
+                    memcpy(&v.value_.bigint, blockStart, size);
+                    v.is_null = false;
+                    //res.push_back(v);
+                    blockStart += size;
+                    break;
+                }
+                default:
+                    throw "NotImplementedYet - Default";
+            }
+        }
+        return {hash, res};
     }
 
-    void SetEntry(Entry e, size_t pos) {
+    void SetEntry(std::pair<uint64_t, std::vector<Value> &> &e, size_t pos) {
         size_t chunkNumber = pos / chunkSize;
         size_t offset = pos % chunkSize;
-        *(data_chunks[chunkNumber] + offset) = e;
+        uint8_t *blockStart = data_chunks[chunkNumber];
+        blockStart += offset * (8 + payloadLength);
+        memcpy(blockStart, &std::get<0>(e), 8);
+        blockStart += 8;
+        for (index_t col = 0; col < types.size(); col++) {
+            auto type = types[col];
+            auto size = GetTypeIdSize(type);
+            switch (type) {
+                // todo
+                case TypeId::SMALLINT: {
+                    memcpy(blockStart, &std::get<1>(e)[col].value_.smallint, size);
+                    blockStart += size;
+                    break;
+                }
+                case TypeId::INTEGER: {
+                    memcpy(blockStart, &std::get<1>(e)[col].value_.integer, size);
+                    blockStart += size;
+                    break;
+                }
+                case TypeId::BIGINT: {
+                    memcpy(blockStart, &std::get<1>(e)[col].value_.bigint, size);
+                    blockStart += size;
+                    break;
+                }
+                default:
+                    throw "NotImplementedYet - Default";
+            }
+        }
     }
 
     string ToString() {
         string s;
         s += to_string(chunkSize) + " " + to_string(payloadLength) + " " + to_string(containedElements) + "\n";
         for (size_t i = 0; i < containedElements; i++) {
-            auto e = GetEntry(i);
-            s += to_string(e.hash) + " " + to_string(e.data[0]) + " " + to_string(e.data[1]) + " " +
-                 to_string(e.data[2]) + " " + to_string(e.data[3]) + "\n";
+            auto[hash, values] = GetEntry(i);
+            s += to_string(hash) + " ";
+            for (auto &v : values) {
+                s += to_string(v.value_.bigint) + " ";
+            }
+            s += "\n";
         }
         return s;
     }
@@ -229,19 +324,13 @@ class EntryStorage {
         Printer::Print(ToString());
     }
 
-    std::vector<Value> ExtractValues(size_t pos) {
+    std::vector<Value> &ExtractValues(size_t pos) {
         auto entry = GetEntry(pos);
-        std::vector<Value> res;
-        for(size_t i = 0; i< types.size(); i++) { //auto &t : types) {
-            auto t = types[i];
-            auto size = GetTypeIdSize(t);
-            Value newValue;
-            newValue.type = t;
-            newValue.is_null = false;
-            newValue.value_.bigint = entry.data[i];
-            res.push_back(newValue);
-        }
-        return res;
+        return std::get<1>(entry);
+    }
+
+    size_t Size() {
+        return containedElements;
     }
 
     private:
@@ -251,6 +340,8 @@ class EntryStorage {
     size_t payloadLength;
     // The types to enable the correct reinterpretation
     std::vector<TypeId> types;
+    //
+    std::vector<Value> res;
     // Number of the elements stored in the EntryStorage
     size_t containedElements;
     // Index of the next free entry to get faster inserts
@@ -259,7 +350,7 @@ class EntryStorage {
     size_t lastChunk;
 
     // Collection of the datachunks where I store the Entrys to
-    std::vector<Entry *> data_chunks;
+    std::vector<uint8_t *> data_chunks;
 };
 
 class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
