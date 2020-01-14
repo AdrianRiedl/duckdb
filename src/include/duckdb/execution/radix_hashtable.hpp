@@ -36,48 +36,6 @@ namespace duckdb {
 */
 class RadixHashTable {
 public:
-	//! Scan structure that can be used to resume scans, as a single probe can
-	//! return 1024*N values (where N is the size of the HT). This is
-	//! returned by the RadixHashTable::Scan function and can be used to resume a
-	//! probe.
-	struct ScanStructure {
-		Vector pointers;
-		Vector build_pointer_vector;
-		sel_t sel_vector[STANDARD_VECTOR_SIZE];
-		// whether or not the given tuple has found a match, used for LeftJoin
-		bool found_match[STANDARD_VECTOR_SIZE];
-		RadixHashTable &ht;
-		bool finished;
-
-		ScanStructure(RadixHashTable &ht);
-		//! Get the next batch of data from the scan structure
-		void Next(DataChunk &keys, DataChunk &left, DataChunk &result);
-
-	private:
-		//! Next operator for the inner join
-		void NextInnerJoin(DataChunk &keys, DataChunk &left, DataChunk &result);
-		//! Next operator for the semi join
-		void NextSemiJoin(DataChunk &keys, DataChunk &left, DataChunk &result);
-		//! Next operator for the anti join
-		void NextAntiJoin(DataChunk &keys, DataChunk &left, DataChunk &result);
-		//! Next operator for the left outer join
-		void NextLeftJoin(DataChunk &keys, DataChunk &left, DataChunk &result);
-		//! Next operator for the mark join
-		void NextMarkJoin(DataChunk &keys, DataChunk &left, DataChunk &result);
-		//! Next operator for the single join
-		void NextSingleJoin(DataChunk &keys, DataChunk &left, DataChunk &result);
-		//! Next operator for the radix join
-        void NextRadixJoin(DataChunk &keys, DataChunk &left, DataChunk &result);
-
-		//! Scan the hashtable for matches of the specified keys, setting the found_match[] array to true or false for
-		//! every tuple
-		void ScanKeyMatches(DataChunk &keys);
-		template <bool MATCH> void NextSemiOrAntiJoin(DataChunk &keys, DataChunk &left, DataChunk &result);
-
-		index_t ScanInnerJoin(DataChunk &keys, DataChunk &left, DataChunk &result);
-
-		void ResolvePredicates(DataChunk &keys, Vector &comparison_result);
-	};
 
     void Hash(DataChunk &keys, Vector &hashes);
 
@@ -103,21 +61,13 @@ public:
 		}
 	};
 
-	//unique_ptr<void*> dataStorage;
-//	struct DataSaver {
-//	    std::vector<Value> data;
-//	    unique_ptr<DataSaver> next;
-//	    DataSaver(index_t size) {
-//	        data.resize(size);
-//	    }
-//	};
-	// Keys to the linked list with the data
-	//std::vector<std::pair<std::vector<Value>, unique_ptr<DataSaver>>> datas;
-	std::vector<std::pair<std::vector<Value>, std::vector<Value>>> hashTable;
+	uint8_t *data;
+	std::vector<Value> dataStorage;
 
     public:
 	RadixHashTable(vector<JoinCondition> &conditions, vector<TypeId> build_types, JoinType type,
 	              index_t initial_capacity = 1, bool parallel = false);
+	~RadixHashTable();
 	//! Resize the HT to the specified size. Must be larger than the current
 	//! size.
 	void Resize(index_t size);
@@ -213,7 +163,7 @@ private:
 	vector<bool> null_values_are_equal;
 
 	//! Copying not allowed
-	RadixHashTable(const RadixHashTable &) = delete;
+	//RadixHashTable(const RadixHashTable &) = delete;
 };
 
 } // namespace duckdb

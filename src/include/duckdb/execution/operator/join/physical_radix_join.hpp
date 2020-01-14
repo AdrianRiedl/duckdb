@@ -16,7 +16,7 @@
 #define TIMER 1
 #define TIMERWHOLE 1
 #define PREFETCH 0
-#define CHUNKSIZE 20000
+#define CHUNKSIZE 1024*1024
 
 namespace duckdb {
 
