@@ -40,6 +40,13 @@ RadixHashTable::RadixHashTable(vector<JoinCondition> &conditions, vector<TypeId>
                                                                           has_null(false), capacity(0), count(0),
                                                                           parallel(parallel) {
     bitmask = initial_capacity - 1;
+    std::chrono::time_point<std::chrono::high_resolution_clock> start;
+    timeForKeyInsert = start - start;
+    timeForDataInsert = start - start;
+    timeForKeyProbe = start - start;
+    timeForTupleBuild = start - start;
+    timeForAppending = start - start;
+    timeBucketSearchBuild = start - start;
     for (auto &condition : conditions) {
         assert(condition.left->return_type == condition.right->return_type);
         auto type = condition.left->return_type;
@@ -212,17 +219,31 @@ void RadixHashTable::Build(DataChunk &keys, DataChunk &payload) {
     if (keys.size() == 0) {
         return;
     }
+#if TIMER
+    auto start = std::chrono::high_resolution_clock::now();
+    auto end = std::chrono::high_resolution_clock::now();
+#endif
     for (index_t i = 0; i < keys.size(); i++) {
+#if TIMER
+        start = std::chrono::high_resolution_clock::now();
+#endif
         auto bucket = payload.GetVector(payload.column_count - 1).GetValue(i).value_.hash & bitmask;
         // Iterate over all the buckets until there is one free
         while (*(data + bucket * (tuple_size + 1))) {
             bucket++;
             bucket &= bitmask;
         }
+#if TIMER
+        end = std::chrono::high_resolution_clock::now();
+        timeBucketSearchBuild += end-start;
+#endif
         auto writer = data + bucket * (tuple_size + 1);
         // Signal for a taken bucket
         writer[0] = 0xff;
         writer++;
+#if TIMER
+        start = std::chrono::high_resolution_clock::now();
+#endif
         for (index_t keyI = 0; keyI < keys.column_count; keyI++) {
             auto value = keys.GetVector(keyI).GetValue(i);
             auto &type = keys.GetTypes()[keyI];
@@ -247,7 +268,12 @@ void RadixHashTable::Build(DataChunk &keys, DataChunk &payload) {
                     throw "Not implemented in RadixJoinHashTable";
             }
         }
+#if TIMER
+        end = std::chrono::high_resolution_clock::now();
+        timeForKeyInsert += (end - start);
 
+        start = std::chrono::high_resolution_clock::now();
+#endif
         for (index_t payloadI = 0; payloadI < payload.column_count; payloadI++) {
             auto value = payload.GetVector(payloadI).GetValue(i);
             auto &type = payload.GetTypes()[payloadI];
@@ -272,6 +298,10 @@ void RadixHashTable::Build(DataChunk &keys, DataChunk &payload) {
                     throw "Not implemented in RadixJoinHashTable";
             }
         }
+#if TIMER
+        end = std::chrono::high_resolution_clock::now();
+        timeForDataInsert += end - start;
+#endif
     }
 }
 
@@ -287,27 +317,30 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, ChunkCollection 
             uint8_t *reader = data + bucket * (tuple_size + 1);
             // Skip the 0xff
             reader++;
+#if TIMER
+            auto start = std::chrono::high_resolution_clock::now();
+#endif
             for (index_t keyI = 0; keyI < keys.column_count; keyI++) {
                 auto value = keys.GetVector(keyI).GetValue(i);
                 auto &type = keys.GetTypes()[keyI];
                 auto size = GetTypeIdSize(type);
                 switch (type) {
                     case TypeId::SMALLINT: {
-                        if(memcmp(reader, &value.value_.smallint, size) != 0) {
+                        if (memcmp(reader, &value.value_.smallint, size) != 0) {
                             checkKey = false;
                         }
                         reader += size;
                         break;
                     }
                     case TypeId::INTEGER: {
-                        if(memcmp(reader, &value.value_.integer, size) != 0) {
+                        if (memcmp(reader, &value.value_.integer, size) != 0) {
                             checkKey = false;
                         }
                         reader += size;
                         break;
                     }
                     case TypeId::BIGINT: {
-                        if(memcmp(reader, &value.value_.bigint, size) != 0) {
+                        if (memcmp(reader, &value.value_.bigint, size) != 0) {
                             checkKey = false;
                         }
                         reader += size;
@@ -317,9 +350,16 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, ChunkCollection 
                         throw "Not yet implemented here";
                 }
             }
+#if TIMER
+            auto end = std::chrono::high_resolution_clock::now();
+            timeForKeyProbe += (end - start);
+#endif
             // Match found
             // reader is now at the position with the data
-            if(checkKey) {
+            if (checkKey) {
+#if TIMER
+                start = std::chrono::high_resolution_clock::now();
+#endif
                 index_t pos = temp.size();
                 for (index_t payloadI = 0; payloadI < payload.column_count; payloadI++) {
                     temp.GetVector(payloadI).count++;
@@ -350,24 +390,50 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, ChunkCollection 
                             throw "Not yet implememnted here";
                     }
                 }
-                for(index_t storedI = 0; storedI< build_types.size(); storedI++) {
+                for (index_t storedI = 0; storedI < build_types.size(); storedI++) {
                     temp.GetVector(offset + storedI).count++;
                     temp.GetVector(offset + storedI).SetValue(pos, dataStorage[storedI]);
                 }
                 if (temp.size() == STANDARD_VECTOR_SIZE) {
+#if TIMER
+                    auto startApp = std::chrono::high_resolution_clock::now();
+#endif
                     result.Append(temp);
+#if TIMER
+                    auto endApp = std::chrono::high_resolution_clock::now();
+                    timeForAppending += (endApp - startApp);
+#endif
                     temp.Reset();
                 }
+#if TIMER
+                end = std::chrono::high_resolution_clock::now();
+                timeForTupleBuild += (end - start);
+#endif
             }
             bucket++;
             bucket = bucket & (bitmask);
         }
+#if TIMER
+        auto startApp = std::chrono::high_resolution_clock::now();
+#endif
         result.Append(temp);
+#if TIMER
+        auto endApp = std::chrono::high_resolution_clock::now();
+        timeForAppending += (endApp - startApp);
+#endif
         temp.Reset();
     }
 }
 
 RadixHashTable::~RadixHashTable() {
+#if TIMER
+    std::cerr << "Building for the keys took " << timeForKeyInsert.count() << "s!" << std::endl;
+    std::cerr << "BucketBuildSearchtime took " << timeBucketSearchBuild.count() << "s!" << std::endl;
+    std::cerr << "Building for the values took " << timeForDataInsert.count() << "s!" << std::endl;
+    std::cerr << "Probing for the keys took " << timeForKeyProbe.count() << "s!" << std::endl;
+    std::cerr << "Probing and building for the tuple took " << timeForTupleBuild.count() << "s!" << std::endl;
+    std::cerr << "Appending took " << timeForAppending.count() << "s!" << std::endl;
+#endif
     free(data);
 }
 

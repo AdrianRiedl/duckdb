@@ -13,7 +13,7 @@
 #include "duckdb/common/types/static_vector.hpp"
 
 #define SINGLETHREADED 1
-#define TIMER 1
+#define TIMER 0
 #define TIMERWHOLE 1
 #define PREFETCH 0
 #define CHUNKSIZE 1024*1024
@@ -59,7 +59,6 @@ class Histogram {
     index_t **partitionEnds;
 
     bool initialized;
-    //vector<std::pair<index_t, index_t>> range;
 
 
     void IncrementBucketCounter(index_t partition, index_t bucket) {
@@ -423,8 +422,10 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
                       vector<JoinCondition> cond, JoinType join_type);
 
     ~PhysicalRadixJoin() {
-        std::cerr << "Building ht took: " << timeBuild << std::endl;
-        std::cerr << "Probing ht took: " << timeProbe << std::endl;
+#if TIMER
+        std::cerr << "Building ht took: " << timeBuild.count() << std::endl;
+        std::cerr << "Probing ht took: " << timeProbe.count() << std::endl;
+#endif
     }
 
     // TODO
@@ -436,7 +437,7 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
     vector<std::pair<std::pair<index_t, index_t>, std::pair<index_t, index_t>>> partitions;
 
     //! Vector which contains the number of bits used for the index+1 split
-    vector<size_t> numberOfBits = {7, 7, 4, 5};
+    vector<size_t> numberOfBits = {2, 2, 4, 5};
     //! How often to partition
     size_t runs = 2;
     //! The collection to store all the result
@@ -447,8 +448,18 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
     index_t output_internal = 0;
 
     bool firstCall;
-    std::chrono::nanoseconds::rep timeBuild = 0;
-    std::chrono::nanoseconds::rep timeProbe = 0;
+    std::chrono::duration<double> timeBuild;
+    std::chrono::duration<double> timeProbe;
+    std::chrono::duration<double> elapsed_seconds;
+    std::chrono::duration<double> orderinghashBuild;
+    std::chrono::duration<double> extractingValBuild;
+    std::chrono::duration<double> writingDataBuild;
+    std::chrono::duration<double> gettingHashtable;
+    std::chrono::duration<double> gettingDChunk;
+    std::chrono::duration<double> remaining;
+    std::chrono::duration<double> orderinghashProbe;
+    std::chrono::duration<double> extractingValProbe;
+    std::chrono::duration<double> writingDataProbe;
 
     public:
     void GetChunkInternal(ClientContext &context, DataChunk &chunk, PhysicalOperatorState *state) override;

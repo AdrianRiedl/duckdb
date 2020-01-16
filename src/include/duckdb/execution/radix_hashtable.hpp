@@ -17,6 +17,8 @@
 
 #include <mutex>
 
+#define TIMER 0
+
 
 
 namespace duckdb {
@@ -107,6 +109,18 @@ public:
 	bool has_null;
 	//! Bitmask for getting relevant bits from the hashes to determine the position
 	uint64_t bitmask;
+
+
+    std::chrono::duration<double> timeForKeyInsert;
+    std::chrono::duration<double> timeBucketSearchBuild;
+    std::chrono::duration<double> timeBucketSearchProbe;
+    std::chrono::duration<double> timeForDataInsert;
+    std::chrono::duration<double> timeForKeyProbe;
+    std::chrono::duration<double> timeForTupleBuild;
+    std::chrono::duration<double> timeForAppending;
+
+    int check = 0;
+
 
     //---------------------------------------------------------------------------
     // Bit Twiddling Hacks:
