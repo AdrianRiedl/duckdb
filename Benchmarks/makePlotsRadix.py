@@ -132,11 +132,11 @@ modifyFileDuckDBTimer()
 for i in range(START,END):
     modifyFileDuckDB(i)
     # Change dir to make the new executable
-    os.chdir("../build/benchmark")
+    os.chdir("../build/release/benchmark")
     # Configure and make the new executable
     os.system("make -j8")
     # Change back to the Desktop
-    os.chdir("../../Benchmarks")
+    os.chdir("../../../Benchmarks")
     # Wait to cool down
     time.sleep(5) # sleep 5 seconds
     # Execute the benchmarkrunner
@@ -144,11 +144,11 @@ for i in range(START,END):
     # Wait to cool down
     time.sleep(5) # sleep 5 seconds
     # Change dir to make the new executable
-    os.chdir("../build/benchmark")
+    os.chdir("../build/release/benchmark")
     # Configure and make the new executable
     os.system("make clean")
     # Change back to the Desktop
-    os.chdir("../../Benchmarks")
+    os.chdir("../../../Benchmarks")
 
 
 time.sleep(10)
@@ -168,11 +168,11 @@ modifyFileDuckDBNoTimer()
 for i in range(START,END):
     modifyFileDuckDB(i)
     # Change dir to make the new executable
-    os.chdir("../build/benchmark")
+    os.chdir("../build/release/benchmark")
     # Configure and make the new executable
     os.system("make -j8")
     # Change back to the Desktop
-    os.chdir("../../Benchmarks")
+    os.chdir("../../../Benchmarks")
     # Wait to cool down
     time.sleep(5) # sleep 5 seconds
     # Execute the benchmarkrunner
@@ -180,8 +180,8 @@ for i in range(START,END):
     # Wait to cool down
     time.sleep(5) # sleep 5 seconds
     # Change dir to make the new executable
-    os.chdir("../build/benchmark")
+    os.chdir("../build/release/benchmark")
     # Configure and make the new executable
     os.system("make clean")
     # Change back to the Desktop
-    os.chdir("../../Benchmarks")
+    os.chdir("../../../Benchmarks")

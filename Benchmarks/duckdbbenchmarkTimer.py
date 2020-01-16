@@ -55,7 +55,7 @@ STDOUT = False
 SHRINKED = True
 RUNS = 10
 NUMBER = 4*1024*1024
-PROG_NAME = b'./../build/benchmark/benchmark_runner RadixJoin'
+PROG_NAME = b'./../build/release/benchmark/benchmark_runner RadixJoin'
 
 
 COLLECTINGLEFT = "Collecting the left side took"
@@ -467,7 +467,7 @@ def makePlot(dataObj):
 def exec_test():
     print("------------------------------STARTING------------------------------")
     dataObj = DataSaver()
-    popen = sp.Popen(["../build/benchmark/benchmark_runner", "RadixJoin"], stdout=sp.PIPE, stderr=sp.PIPE, universal_newlines=True)
+    popen = sp.Popen(["../build/release/benchmark/benchmark_runner", "RadixJoin"], stdout=sp.PIPE, stderr=sp.PIPE, universal_newlines=True)
 
     linesStderr = []
 

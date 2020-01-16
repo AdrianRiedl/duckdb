@@ -5,6 +5,7 @@
 #include <iostream>
 #include <thread>
 #include <fstream>
+#include <atomic>
 
 #include "duckdb/execution/operator/join/physical_radix_join.hpp"
 //#include "duckdb/compressing/lz4.h"
