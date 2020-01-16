@@ -13,7 +13,7 @@
 #include "duckdb/common/types/static_vector.hpp"
 
 #define SINGLETHREADED 1
-#define TIMER 0
+//#define TIMER 1
 #define TIMERWHOLE 1
 #define PREFETCH 0
 #define CHUNKSIZE 1024*1024
