@@ -13,7 +13,6 @@
 #include "duckdb/common/types/static_vector.hpp"
 
 #define SINGLETHREADED 1
-//#define TIMER 1
 #define TIMERWHOLE 1
 #define PREFETCH 0
 #define CHUNKSIZE 1024*1024
@@ -437,7 +436,7 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
     vector<std::pair<std::pair<index_t, index_t>, std::pair<index_t, index_t>>> partitions;
 
     //! Vector which contains the number of bits used for the index+1 split
-    vector<size_t> numberOfBits = {2, 2, 4, 5};
+    vector<size_t> numberOfBits = {7, 7, 4, 5};
     //! How often to partition
     size_t runs = 2;
     //! The collection to store all the result

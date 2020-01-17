@@ -7,7 +7,7 @@ HEADINGSTIMER = ["Tuples", "CollLeft","PartLeft", "CollRight", "PartRight", "Set
 HEADINGSNOTIMER = ["Tuples", "runtime"]
 
 START = 6
-END = 9
+END = 15
 
 def power2(ex):
     if ex == 0:
