@@ -446,6 +446,8 @@ def saveDataAndPlots(pathStart, dataObj):
     for i in range(0,dataObj.elements):
         vec = dataObj.getData(i)
         avg = makeAvg(vec, len(vec))
+        if avg == None:
+            avg = 0
         d.append(avg)
 
         if i == 6 or i == 7 or i == 8 or i == 9 or i == 10 or i == 13 or i == 14 or i == 15:

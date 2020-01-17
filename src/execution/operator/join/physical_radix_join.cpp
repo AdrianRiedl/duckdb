@@ -474,10 +474,13 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 #endif
                 }
                 hashes.Reset();
+                startOrderingHash = std::chrono::high_resolution_clock::now();
                 ExpressionExecutor executorL(dataLeft);
                 for (index_t j = 0; j < conditions.size(); j++) {
                     executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
                 }
+                endOrderingHash = std::chrono::high_resolution_clock::now();
+                orderinghashProbe += endOrderingHash - startOrderingHash;
 
                 try {
                     hash_table->Probe(hashes, dataLeft, result);
