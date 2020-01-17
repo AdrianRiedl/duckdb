@@ -18,7 +18,11 @@ static void SerializeChunk(DataChunk &source, data_ptr_t targets[]) {
     index_t offset = 0;
     for (index_t i = 0; i < source.column_count; i++) {
         VectorOperations::Scatter::SetAll(source.data[i], target_vector, true, offset);
-        offset += GetTypeIdSize(source.data[i].type);
+        try {
+            offset += GetTypeIdSize(source.data[i].type);
+        } catch (ConversionException &e) {
+            std::cout << "Exception in GetTypeIdSize Serialize" << std::endl;
+        }
     }
 }
 
@@ -29,7 +33,11 @@ static void DeserializeChunk(DataChunk &result, data_ptr_t source[], index_t cou
     index_t offset = 0;
     for (index_t i = 0; i < result.column_count; i++) {
         VectorOperations::Gather::Set(source_vector, result.data[i], false, offset);
-        offset += GetTypeIdSize(result.data[i].type);
+        try {
+            offset += GetTypeIdSize(result.data[i].type);
+        } catch (ConversionException &e) {
+            std::cout << "Exception in GetTypeIdSize Deserialize" << std::endl;
+        }
     }
 }
 
@@ -77,7 +85,11 @@ RadixHashTable::RadixHashTable(vector<JoinCondition> &conditions, vector<TypeId>
         // otherwise we need to store the entire build side for reconstruction
         // purposes
         for (index_t i = 0; i < build_types.size(); i++) {
-            build_size += GetTypeIdSize(build_types[i]);
+            try {
+                build_size += GetTypeIdSize(build_types[i]);
+            } catch (ConversionException &e) {
+                std::cout << "Exception in RadixHashTable Constructor" << std::endl;
+            }
         }
     }
     tuple_size = condition_size + build_size;
@@ -89,6 +101,9 @@ RadixHashTable::RadixHashTable(vector<JoinCondition> &conditions, vector<TypeId>
     // Malloc the corresponding size of the tuples with the initial capacity
     data = static_cast<uint8_t *>(calloc(initial_capacity, tuple_size + 1));
     dataStorage.resize(build_types.size());
+    for (index_t i = 0; i < dataStorage.size(); i++) {
+        dataStorage[i].type = build_types[i];
+    }
     // Memory chunk to store all the conditions to compare
     //probeMem = static_cast<uint8_t *>(calloc(1, condition_size));
 }
@@ -235,7 +250,7 @@ void RadixHashTable::Build(DataChunk &keys, DataChunk &payload) {
         }
 #if TIMER
         end = std::chrono::high_resolution_clock::now();
-        timeBucketSearchBuild += end-start;
+        timeBucketSearchBuild += end - start;
 #endif
         auto writer = data + bucket * (tuple_size + 1);
         // Signal for a taken bucket
@@ -244,10 +259,16 @@ void RadixHashTable::Build(DataChunk &keys, DataChunk &payload) {
 #if TIMER
         start = std::chrono::high_resolution_clock::now();
 #endif
+        auto vec = keys.GetTypes();
         for (index_t keyI = 0; keyI < keys.column_count; keyI++) {
             auto value = keys.GetVector(keyI).GetValue(i);
-            auto &type = keys.GetTypes()[keyI];
-            auto size = GetTypeIdSize(type);
+            auto type = vec[keyI];
+            index_t size;
+            try {
+                size = GetTypeIdSize(type);
+            } catch (ConversionException &e) {
+                std::cout << "An exception in GetTypeIdSize occurred for setting keys in HT build" << std::endl;
+            }
             switch (type) {
                 case TypeId::SMALLINT: {
                     memcpy(writer, &value.value_.smallint, size);
@@ -276,8 +297,13 @@ void RadixHashTable::Build(DataChunk &keys, DataChunk &payload) {
 #endif
         for (index_t payloadI = 0; payloadI < payload.column_count; payloadI++) {
             auto value = payload.GetVector(payloadI).GetValue(i);
-            auto &type = payload.GetTypes()[payloadI];
-            auto size = GetTypeIdSize(type);
+            auto type = payload.GetTypes()[payloadI];
+            index_t size;
+            try {
+                size = GetTypeIdSize(type);
+            } catch (ConversionException &e) {
+                std::cout << "An exception in GetTypeIdSize occurred for setting values in HT build" << std::endl;
+            }
             switch (type) {
                 case TypeId::SMALLINT: {
                     memcpy(writer, &value.value_.smallint, size);
@@ -322,8 +348,13 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, ChunkCollection 
 #endif
             for (index_t keyI = 0; keyI < keys.column_count; keyI++) {
                 auto value = keys.GetVector(keyI).GetValue(i);
-                auto &type = keys.GetTypes()[keyI];
-                auto size = GetTypeIdSize(type);
+                auto type = keys.GetTypes()[keyI];
+                index_t size;
+                try {
+                    size = GetTypeIdSize(type);
+                } catch (ConversionException &e) {
+                    std::cout << "An exception in GetTypeIdSize occurred for probing values in HT probe" << std::endl;
+                }
                 switch (type) {
                     case TypeId::SMALLINT: {
                         if (memcmp(reader, &value.value_.smallint, size) != 0) {
@@ -368,8 +399,13 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, ChunkCollection 
                 index_t offset = payload.column_count;
                 for (index_t storedI = 0; storedI < build_types.size(); storedI++) {
                     dataStorage[storedI].is_null = false;
-                    auto &type = build_types[storedI];
-                    auto size = GetTypeIdSize(type);
+                    auto type = build_types[storedI];
+                    index_t size;
+                    try {
+                        size = GetTypeIdSize(type);
+                    } catch (ConversionException &e) {
+                        std::cout << "An exception in GetTypeIdSize occurred for gettung values in HT probe" << std::endl;
+                    }
                     switch (type) {
                         case TypeId::SMALLINT: {
                             memcpy(&dataStorage[storedI].value_.smallint, reader, size);

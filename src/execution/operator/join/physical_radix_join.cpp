@@ -39,7 +39,7 @@ PhysicalRadixJoin::PhysicalRadixJoin(LogicalOperator &op, unique_ptr<PhysicalOpe
     orderinghashProbe = start - start;;
     extractingValProbe = start - start;;
     writingDataProbe = start - start;
-    remaining = start-start;
+    remaining = start - start;
 }
 
 void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chunk, PhysicalOperatorState *state_) {
@@ -350,7 +350,11 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                         orderinghashBuild += endOrderingHash - startOrderingHash;
 #endif
                         // Insert into the hashtable
-                        hash_table->Build(hashes, dataRight);
+                        try {
+                            hash_table->Build(hashes, dataRight);
+                        } catch (ConversionException &e) {
+                            std::cout << "An exception in HT build" << std::endl;
+                        }
                         // Reset the datachunk for next iteration
                         dataRight.Reset();
                         pos = dataRight.size();
@@ -389,7 +393,11 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 orderinghashBuild += endOrderingHash - startOrderingHash;
 #endif
                 // Insert into the hashtable
-                hash_table->Build(hashes, dataRight);
+                try {
+                    hash_table->Build(hashes, dataRight);
+                } catch (ConversionException &e) {
+                    std::cout << "An exception in HT build" << std::endl;
+                }
 
 #if TIMER
                 auto finishBuild = std::chrono::high_resolution_clock::now();
@@ -439,7 +447,11 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                         auto endOrderingHash = std::chrono::high_resolution_clock::now();
                         orderinghashProbe += endOrderingHash - startOrderingHash;
 #endif
-                        hash_table->Probe(hashes, dataLeft, result);
+                        try {
+                            hash_table->Probe(hashes, dataLeft, result);
+                        } catch (ConversionException &e) {
+                            std::cout << "An exception in HT probe" << std::endl;
+                        }
                         dataLeft.Reset();
                         pos = dataLeft.size();
                     }
@@ -467,7 +479,11 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                     executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
                 }
 
-                hash_table->Probe(hashes, dataLeft, result);
+                try {
+                    hash_table->Probe(hashes, dataLeft, result);
+                } catch (ConversionException &e) {
+                    std::cout << "An exception in HT probe" << std::endl;
+                }
 #if TIMER
                 auto finishProbe = std::chrono::high_resolution_clock::now();
                 timeProbe += finishProbe - startProbe;
