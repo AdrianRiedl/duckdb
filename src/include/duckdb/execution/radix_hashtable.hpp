@@ -17,7 +17,7 @@
 
 #include <mutex>
 
-#define TIMER 1
+#define TIMER 0
 
 
 

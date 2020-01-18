@@ -1,10 +1,9 @@
 
 #   EXAMPLEOUTPUT:
 #
-#    1/10...The whole operator took: 0.512479s!
-#    Building ht took: 0
-#    Probing ht took: 0
-#    0.517489
+#    9/10...Building took 0.00237414
+#    Probing took 0.00511172
+#    0.006592
 
 
 from __future__ import print_function
@@ -21,9 +20,11 @@ STDOUT = False
 SHRINKED = True
 RUNS = 10
 NUMBER = 4*1024*1024
+PROG_NAME = b'./../build/release/benchmark/benchmark_runner RadixJoin'
 
 
-WHOLEOP = "The whole operator took"
+BUILDHT = "Building took"
+PROBEHT = "Probing took"
 
 numeric_const_pattern = '[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?'
 
@@ -31,62 +32,110 @@ numeric_const_pattern = '[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+
 class DataSaver:
 
     def __init__(self):
-        self.elements = 1
-        self.wholeop = []                       #0
-
+        self.elements = 3
+        self.buildinghts = []                   #0
+        self.probinghts = []                    #1
+        self.complete = []                      #2
 
 
     def getData(self, index):
         if index == 0:
-            return self.wholeop
-        if index >= 1:
+            return self.buildinghts
+        if index == 1:
+            return self.probinghts
+        if index == 2:
+            return self.complete
+        if index >= 3:
             print("error - index to large getData")
 
     def setValue(self, index, value):
         if index == 0:
-            self.wholeop.append(value)
-        if index >= 1:
+            self.buildinghts.append(value)
+        if index == 1:
+            self.probinghts.append(value)
+        if index == 2:
+            self.complete.append(value)
+        if index >= 3:
             print("error - index to large getData")
-            
-            
+
+
     def replaceList(self, index, list):
         if index == 0:
-            self.wholeop = list
-        if index >= 1:
+            self.buildinghts = list
+        if index == 1:
+            self.probinghts = list
+        if index == 2:
+            self.complete = list
+        if index >= 3:
             print("error - index to large getData")
-            
+
     def getIndex(self, line):
-        if WHOLEOP in line:
+        if BUILDHT in line:
             return 0
+        if PROBEHT in line:
+            return 1
+        # has to be last!!!!!!!!!!!!!
+        if "." in line:
+            return 2
         else:
+            print("Should not happen")
             return None
-        
+
+    def shrinkBuild(self):
+        RUNNUMBER = 10
+        lengthbuildingForKeys = len(self.buildingForKeys)
+        lengthbuildingForValues = len(self.buildingForValues)
+        lengthprobingForKeys = len(self.probingForKeys)
+        lengthprobingAndBuildingForTuple = len(self.probingAndBuildingForTuple)
+        lengthappending = len(self.appending)
+        lengthbucketsearch = len(self.bucketsearch)
+        if not lengthbuildingForKeys ==lengthbuildingForValues:
+            print("ERROR in lenght 1")
+            return
+        if not lengthbuildingForValues ==lengthprobingForKeys:
+            print("ERROR in lenght 2")
+            return
+        if not lengthprobingForKeys ==lengthprobingAndBuildingForTuple:
+            print("ERROR in length 3")
+            return
+        if not lengthprobingAndBuildingForTuple ==lengthappending:
+            print("ERROR in length 4")
+            return
+        if not lengthbucketsearch == lengthappending:
+            print("ERROR in length 5")
+            return
+        partsPerRun = lengthappending / RUNNUMBER
+        partsPerRun = int(partsPerRun)
+
+        for list in self.specialcases:
+            newList = []
+            sum = 0
+            for i in range (0, lengthappending):
+                if self.getData(list)[i] == None:
+                    newList.append(sum)
+                    sum = 0
+                    continue
+                sum += self.getData(list)[i]
+            self.replaceList(list, newList)
+
 
     def insertData(self, linesStderr):
-        pos = 0
         for line in linesStderr:
             if 'Killed' in line:
                 break
-            #print(line)
             index = self.getIndex(line)
-            if index == None:
-                continue
-            #print(index)
-            if index == 13:
-                for a in self.specialcases:
-                    self.setValue(a, None)
-                
+
             rx = re.compile(numeric_const_pattern, re.VERBOSE)
             res = rx.findall(line)
             #print(res)
             res = list(map(float, res))
-            #print(res)
             if index == 0:
                 self.setValue(index, res[2])
             else:
-                print("This should not happen")
+                if res[0] != 0.0:
+                    self.setValue(index, res[0])
 
-                
+
 
 def makeAvg(list, number):
     sum = 0
@@ -94,19 +143,20 @@ def makeAvg(list, number):
         sum += l
     if number == 0:
         return None
-    return sum/number
+    avg = sum / number
+    return avg
 
 def saveDataAndPlots(pathStart, dataObj):
     # create the path if necessary
     if not os.path.exists(pathStart):
         os.makedirs(pathStart)
-    pathDataRuntime = pathStart + b'/data_runtimeNoTimer.csv'
+    pathDataRuntime = pathStart + b'/data_runtimeTimer.csv'
     fDataRuntime = open(pathDataRuntime, 'a+')
     all = []
     if DEBUG:
         print(dataObj.complete)
         print(dataObj.runtime)
-    fileCpp = open('../benchmark/micro/radixjoin.cpp', 'r')
+    fileCpp = open('../../benchmark/micro/radixjoin.cpp', 'r')
     line = fileCpp.readline()
     while not '#define' in line:
         line = fileCpp.readline()
@@ -122,10 +172,6 @@ def saveDataAndPlots(pathStart, dataObj):
             avg = 0
         d.append(avg)
         
-        if i == 6 or i == 7 or i == 8 or i == 9 or i == 10 or i == 13 or i == 14 or i == 15:
-            continue
-        sum += avg
-    #d[14] = sum
     for i in range(0,dataObj.elements):
         text = "{0:.10f}".format(d[i])
         if i != dataObj.elements-1:
@@ -141,8 +187,8 @@ def makePlot(dataObj):
 def exec_test():
     print("------------------------------STARTING------------------------------")
     dataObj = DataSaver()
-    popen = sp.Popen(["../build/release/benchmark/benchmark_runner", "RadixJoin"], stdout=sp.PIPE, stderr=sp.PIPE, universal_newlines=True)
-    
+    popen = sp.Popen(["../../build/release/benchmark/benchmark_runner", "RadixJoin"], stdout=sp.PIPE, stderr=sp.PIPE, universal_newlines=True)
+
     linesStderr = []
 
     for stderr_line in iter(popen.stderr.readline, ""):
@@ -156,17 +202,7 @@ def exec_test():
         print(linesStderr[startindex])
     dataObj.insertData(linesStderr[startindex:len(linesStderr)])
     print("------------------------------FINISHED------------------------------")
-    
-    
-    #if DEBUG:
-#    for i in range (0,dataObj.elements):
-#        print(str(i) + ": ")
-#        print(dataObj.getData(i))
-    # This boils down the lists containing the data of the hashtables
-    
-#    for i in range (0,dataObj.elements):
-#        print(str(i) + ": ")
-#        print(dataObj.getData(i))
+
     if DEBUG:
         for i in range (0,dataObj.elements):
             print(str(i) + ": ")

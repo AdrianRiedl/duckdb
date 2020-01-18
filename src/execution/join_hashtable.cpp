@@ -73,6 +73,8 @@ JoinHashTable::JoinHashTable(vector<JoinCondition> &conditions, vector<TypeId> b
 	tuple_size = condition_size + build_size;
 	entry_size = tuple_size + sizeof(void *);
 	Resize(initial_capacity);
+
+
 }
 
 void JoinHashTable::ApplyBitmask(Vector &hashes) {

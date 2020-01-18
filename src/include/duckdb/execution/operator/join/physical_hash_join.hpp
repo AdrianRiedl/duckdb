@@ -24,9 +24,15 @@ public:
 
 	unique_ptr<JoinHashTable> hash_table;
 
+	~PhysicalHashJoin();
+
 public:
 	void GetChunkInternal(ClientContext &context, DataChunk &chunk, PhysicalOperatorState *state) override;
 	unique_ptr<PhysicalOperatorState> GetOperatorState() override;
+
+
+    std::chrono::duration<double> timeBuild;
+    std::chrono::duration<double> timeProbe;
 };
 
 class PhysicalHashJoinOperatorState : public PhysicalOperatorState {

@@ -434,7 +434,7 @@ def saveDataAndPlots(pathStart, dataObj):
     if DEBUG:
         print(dataObj.complete)
         print(dataObj.runtime)
-    fileCpp = open('../benchmark/micro/radixjoin.cpp', 'r')
+    fileCpp = open('../../benchmark/micro/radixjoin.cpp', 'r')
     line = fileCpp.readline()
     while not '#define' in line:
         line = fileCpp.readline()
@@ -469,7 +469,7 @@ def makePlot(dataObj):
 def exec_test():
     print("------------------------------STARTING------------------------------")
     dataObj = DataSaver()
-    popen = sp.Popen(["../build/release/benchmark/benchmark_runner", "RadixJoin"], stdout=sp.PIPE, stderr=sp.PIPE, universal_newlines=True)
+    popen = sp.Popen(["../../build/release/benchmark/benchmark_runner", "RadixJoin"], stdout=sp.PIPE, stderr=sp.PIPE, universal_newlines=True)
 
     linesStderr = []
 
