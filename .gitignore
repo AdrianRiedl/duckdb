@@ -20,6 +20,10 @@
 .DS_store
 # Core files
 #core
+Benchmarks/HashJoin/plotsBenchmark/*.csv
+Benchmarks/RadixJoin/plotsBenchmark/*.csv
+Benchmarks/HashJoin/plotsBenchmark
+Benchmarks/RadixJoin/plotsBenchmark
 
 #==============================================================================#
 # Explicit files to ignore (only matches one).
