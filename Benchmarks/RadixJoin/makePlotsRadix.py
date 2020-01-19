@@ -2,11 +2,11 @@ import os
 import time
 
 DEBUG = False
-DEFINE = '#define RADIXJOIN_COUNT {}*1024\n'
+DEFINE = '#define RADIXJOIN_COUNT (size_t) {}*1024\n'
 HEADINGSTIMER = ["Tuples", "CollLeft","PartLeft", "CollRight", "PartRight", "SettPart", "SettRedPart", "BuildKey", "BuildVal", "ProbeKey", "ProbAndBuildTup", "Append", "BuildHT", "ProbeHT", "PerfBuildProb", "Runtime", "Complete", "BucketSearchTime", "ExtractingValueBuild", "WritingDataBuild", "OrderingHashBuild", "GettingHT","gettingDChunk","extractingValProbe","writingDataProbe","orderingHashProbe", "remaining"]
 HEADINGSNOTIMER = ["Tuples", "runtime"]
 
-START = 6
+START = 21
 END = 24
 
 def power2(ex):

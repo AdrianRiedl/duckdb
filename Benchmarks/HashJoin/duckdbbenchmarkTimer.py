@@ -161,7 +161,7 @@ def saveDataAndPlots(pathStart, dataObj):
     while not '#define' in line:
         line = fileCpp.readline()
     splits = line.split(' ')
-    NUMBER = eval(splits[2])
+    NUMBER = eval(splits[3])
     fDataRuntime.write(str(NUMBER) + ",")
     d = []
     sum = 0
