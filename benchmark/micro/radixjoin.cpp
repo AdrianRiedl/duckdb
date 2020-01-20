@@ -8,7 +8,7 @@
 using namespace duckdb;
 using namespace std;
 
-#define RADIXJOIN_COUNT (size_t) 256*1024
+#define RADIXJOIN_COUNT (size_t) 1024*1024
 DUCKDB_BENCHMARK(RadixJoin, "[micro]")
     virtual void Load(DuckDBBenchmarkState *state) {
         // fixed seed random numbers

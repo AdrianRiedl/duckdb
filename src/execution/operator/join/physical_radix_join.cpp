@@ -223,7 +223,6 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             start = std::chrono::high_resolution_clock::now();
 #endif
 
-            //state->right_hash_to_DataSwap.resize(state->right_hash_to_Data.size());
 
             //! Start the partitioning phase with #runs runs and the bits in numberOfBits
             size_t shift = 0;
@@ -332,10 +331,8 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 #if TIMER
                 auto startGettingHT = std::chrono::high_resolution_clock::now();
 #endif
-                auto hash_table = make_unique<RadixHashTable>(conditions, right_typesGlobal, duckdb::JoinType::INNER,
-                                                              2 * dummy_hash_table->NextPow2_64(
-                                                                      shrinked[i].second.second -
-                                                                      shrinked[i].second.first));
+                auto hash_table = make_unique<JoinHashTable>(conditions, right_typesGlobal, duckdb::JoinType::INNER);
+                auto scanStructure = make_unique<JoinHashTable::ScanStructure>(*hash_table.get());
 #if TIMER
                 auto endGettingHT = std::chrono::high_resolution_clock::now();
                 gettingHashtable += endGettingHT - startGettingHT;
@@ -460,21 +457,24 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                         orderinghashProbe += endOrderingHash - startOrderingHash;
 #endif
                         try {
-                            hash_table->Probe(hashes, dataLeft, tempStorage, result);
+                            scanStructure = hash_table->Probe(hashes);
                         } catch (ConversionException &e) {
                             std::cout << "An exception in HT probe" << std::endl;
                         }
                         dataLeft.Reset();
                         pos = dataLeft.size();
+                        do {
+                            tempStorage.Reset();
+                            scanStructure->Next(hashes, dataLeft, tempStorage);
 #if TIMER
-                        auto appendTimerStart = std::chrono::high_resolution_clock::now();
+                            auto appendTimerStart = std::chrono::high_resolution_clock::now();
 #endif
-                        result.Append(tempStorage);
+                            result.Append(tempStorage);
 #if TIMER
-                        auto appendTimerEnd = std::chrono::high_resolution_clock::now();
-                        hash_table->timeForAppending += appendTimerEnd - appendTimerStart;
+                            auto appendTimerEnd = std::chrono::high_resolution_clock::now();
+                            timeForAppending += appendTimerEnd - appendTimerStart;
 #endif
-                        tempStorage.Reset();
+                        } while (tempStorage.size()>0);
                     }
 #if TIMER
                     auto startExtract = std::chrono::high_resolution_clock::now();
@@ -508,19 +508,24 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 #endif
 
                 try {
-                    hash_table->Probe(hashes, dataLeft, tempStorage, result);
+                    scanStructure = hash_table->Probe(hashes);
                 } catch (ConversionException &e) {
                     std::cout << "An exception in HT probe" << std::endl;
                 }
+                do {
+                    tempStorage.Reset();
+                    scanStructure->Next(hashes, dataLeft, tempStorage);
 #if TIMER
-                auto appendTimerStart = std::chrono::high_resolution_clock::now();
+                    auto appendTimerStart = std::chrono::high_resolution_clock::now();
 #endif
-                result.Append(tempStorage);
+                    result.Append(tempStorage);
 #if TIMER
-                auto appendTimerEnd = std::chrono::high_resolution_clock::now();
-                hash_table->timeForAppending += appendTimerEnd - appendTimerStart;
+                    auto appendTimerEnd = std::chrono::high_resolution_clock::now();
+                    timeForAppending += appendTimerEnd - appendTimerStart;
 #endif
-                tempStorage.Reset();
+                } while (tempStorage.size()>0);
+
+
 #if TIMER
                 auto finishProbe = std::chrono::high_resolution_clock::now();
                 timeProbe += finishProbe - startProbe;

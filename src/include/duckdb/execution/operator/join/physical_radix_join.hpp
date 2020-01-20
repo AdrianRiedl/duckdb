@@ -458,6 +458,7 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
     std::chrono::duration<double> remaining;
     std::chrono::duration<double> orderinghashProbe;
     std::chrono::duration<double> extractingValProbe;
+    std::chrono::duration<double> timeForAppending;
     std::chrono::duration<double> writingDataProbe;
 
     public:
