@@ -6,7 +6,7 @@ DEFINE = '#define RADIXJOIN_COUNT (size_t) {}*1024\n'
 HEADINGSTIMER = ["Tuples", "CollLeft","PartLeft", "CollRight", "PartRight", "SettPart", "SettRedPart", "BuildKey", "BuildVal", "ProbeKey", "ProbAndBuildTup", "Append", "BuildHT", "ProbeHT", "PerfBuildProb", "Runtime", "Complete", "BucketSearchTime", "ExtractingValueBuild", "WritingDataBuild", "OrderingHashBuild", "GettingHT","gettingDChunk","extractingValProbe","writingDataProbe","orderingHashProbe", "remaining"]
 HEADINGSNOTIMER = ["Tuples", "runtime"]
 
-START = 21
+START = 6
 END = 24
 
 def power2(ex):
@@ -130,6 +130,7 @@ fDataRuntime.close()
 modifyFileDuckDBTimer()
 
 for i in range(START,END):
+    print("Timer Modifying to " + str(i))
     modifyFileDuckDB(i)
     # Change dir to make the new executable
     os.chdir("../../build/release/benchmark")
@@ -139,6 +140,7 @@ for i in range(START,END):
     os.chdir("../../../Benchmarks/RadixJoin")
     # Wait to cool down
     time.sleep(5) # sleep 5 seconds
+    print("Timer Starting modified " + str(i))
     # Execute the benchmarkrunner
     os.system("python3 duckdbbenchmarkTimer.py")
     # Wait to cool down
@@ -166,6 +168,7 @@ fDataRuntime.close()
 modifyFileDuckDBNoTimer()
 
 for i in range(START,END):
+    print("No timer Modifying to " + str(i))
     modifyFileDuckDB(i)
     # Change dir to make the new executable
     os.chdir("../../build/release/benchmark")
@@ -175,6 +178,7 @@ for i in range(START,END):
     os.chdir("../../../Benchmarks/RadixJoin")
     # Wait to cool down
     time.sleep(5) # sleep 5 seconds
+    print("No timer Starting modified " + str(i))
     # Execute the benchmarkrunner
     os.system("python3 duckdbbenchmarkNoTimer.py")
     # Wait to cool down

@@ -5,7 +5,7 @@ DEBUG = False
 DEFINE = '#define RADIXJOIN_COUNT (size_t) {}*1024\n'
 HEADINGSTIMER = ["Tuples", "BuildHT", "ProbeHT", "Runtime"]
 
-START = 21
+START = 6
 END = 24
 
 def power2(ex):
@@ -52,6 +52,7 @@ fDataRuntime.close()
 #modifyFileDuckDBTimer()
 
 for i in range(START,END):
+    print("Modifying to " + str(i))
     modifyFileDuckDB(i)
     # Change dir to make the new executable
     os.chdir("../../build/release/benchmark")
@@ -61,6 +62,7 @@ for i in range(START,END):
     os.chdir("../../../Benchmarks/HashJoin")
     # Wait to cool down
     time.sleep(5) # sleep 5 seconds
+    print("Starting modified " + str(i))
     # Execute the benchmarkrunner
     os.system("python3 duckdbbenchmarkTimer.py")
     # Wait to cool down
