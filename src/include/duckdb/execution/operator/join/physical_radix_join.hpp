@@ -356,19 +356,19 @@ class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
     PhysicalRadixJoinOperatorState(PhysicalOperator *left, PhysicalOperator *right) : PhysicalOperatorState(left),
                                                                                       initialized(false) {
         assert(left && right);
-        //left_data = new ChunkCollection();
-        //right_data = new ChunkCollection();
-        //left_data_partitioned = new ChunkCollection();
-        //right_data_partitioned = new ChunkCollection();
+        left_data = new ChunkCollection();
+        right_data = new ChunkCollection();
+        left_data_partitioned = new ChunkCollection();
+        right_data_partitioned = new ChunkCollection();
     }
 
     /// Left side
     //! Temporary storage for the actual extraction of the join keys on the left side
     DataChunk left_join_keys;
     //! Collection of all data chunks from the left side
-    //ChunkCollection *left_data;
+    ChunkCollection *left_data;
     //! Collection of all data chunks from the left side to make the partitions
-    //ChunkCollection *left_data_partitioned;
+    ChunkCollection *left_data_partitioned;
     //! Vector of the hashes
     //std::vector<unique_ptr<StaticVector<uint64_t>>> left_hashes;
     //! Histogram
@@ -381,8 +381,8 @@ class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
     //std::vector<std::pair<uint64_t, std::vector<Value>>> left_hash_to_Data;
     //std::vector<std::pair<uint64_t, std::vector<Value>>> left_hash_to_DataSwap;
 
-    unique_ptr<EntryStorage> left_tuples;
-    unique_ptr<EntryStorage> left_tuplesSwap;
+    //unique_ptr<EntryStorage> left_tuples;
+    //unique_ptr<EntryStorage> left_tuplesSwap;
     //EntryStorage *left_tuples;
     //EntryStorage *left_tuplesSwap;
 
@@ -390,9 +390,9 @@ class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
     //! Temporary storage for the actual extraction of the join keys on the right side
     DataChunk right_join_keys;
     //! Collection of all data chunks from the right side
-    //ChunkCollection *right_data;
+    ChunkCollection *right_data;
     //! Collection of all data chunks from the right side
-    //ChunkCollection *right_data_partitioned;
+    ChunkCollection *right_data_partitioned;
     //! Vector of the hashes
     //std::vector<unique_ptr<StaticVector<uint64_t>>> right_hashes;
     //!Histogram
@@ -405,8 +405,8 @@ class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
     //std::vector<std::pair<uint64_t, std::vector<Value>>> right_hash_to_Data;
     //std::vector<std::pair<uint64_t, std::vector<Value>>> right_hash_to_DataSwap;
 
-    unique_ptr<EntryStorage> right_tuples;
-    unique_ptr<EntryStorage> right_tuplesSwap;
+    //unique_ptr<EntryStorage> right_tuples;
+    //unique_ptr<EntryStorage> right_tuplesSwap;
     //EntryStorage *right_tuples;
     //EntryStorage *right_tuplesSwap;
 

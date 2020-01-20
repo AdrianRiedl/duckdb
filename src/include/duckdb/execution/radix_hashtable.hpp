@@ -78,7 +78,7 @@ public:
 	//! Add the given data to the HT
 	void Build(DataChunk &keys, DataChunk &input);
 	//! Probe the HT with the given input chunk, resulting in the given result
-	void Probe(DataChunk &keys, DataChunk &payload, ChunkCollection &ch);
+	void Probe(DataChunk &keys, DataChunk &payload, DataChunk & tempStorage, ChunkCollection &ch);
 
 	//! The stringheap of the RadixHashTable
 	StringHeap string_heap;
@@ -157,6 +157,7 @@ public:
 	} correlated_mark_join_info;
 
 private:
+    void Print();
 	//! Apply a bitmask to the hashes
 	void ApplyBitmask(Vector &hashes);
 	//! Insert the given set of locations into the HT with the given set of

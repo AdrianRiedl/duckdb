@@ -45,7 +45,7 @@ RadixHashTable::RadixHashTable(vector<JoinCondition> &conditions, vector<TypeId>
                                index_t initial_capacity, bool parallel) : build_types(build_types), equality_size(0),
                                                                           condition_size(0), build_size(0),
                                                                           entry_size(0), tuple_size(0), join_type(type),
-                                                                          has_null(false), capacity(0), count(0),
+                                                                          has_null(false), capacity(initial_capacity), count(0),
                                                                           parallel(parallel) {
     bitmask = initial_capacity - 1;
     std::chrono::time_point<std::chrono::high_resolution_clock> start;
@@ -331,9 +331,9 @@ void RadixHashTable::Build(DataChunk &keys, DataChunk &payload) {
     }
 }
 
-void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, ChunkCollection &result) {
-    DataChunk temp;
-    temp.Initialize(result.types);
+void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, DataChunk &tempStorage, ChunkCollection &result) {
+//    DataChunk temp;
+//    temp.Initialize(result.types);
     for (index_t i = 0; i < keys.size(); i++) {
         // Start bucket
         auto bucket = payload.GetVector(payload.column_count - 1).GetValue(i).value_.hash & bitmask;
@@ -391,10 +391,10 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, ChunkCollection 
 #if TIMER
                 start = std::chrono::high_resolution_clock::now();
 #endif
-                index_t pos = temp.size();
+                index_t pos = tempStorage.size();
                 for (index_t payloadI = 0; payloadI < payload.column_count; payloadI++) {
-                    temp.GetVector(payloadI).count++;
-                    temp.GetVector(payloadI).SetValue(pos, payload.GetVector(payloadI).GetValue(i));
+                    tempStorage.GetVector(payloadI).count++;
+                    tempStorage.GetVector(payloadI).SetValue(pos, payload.GetVector(payloadI).GetValue(i));
                 }
                 index_t offset = payload.column_count;
                 for (index_t storedI = 0; storedI < build_types.size(); storedI++) {
@@ -427,19 +427,20 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, ChunkCollection 
                     }
                 }
                 for (index_t storedI = 0; storedI < build_types.size(); storedI++) {
-                    temp.GetVector(offset + storedI).count++;
-                    temp.GetVector(offset + storedI).SetValue(pos, dataStorage[storedI]);
+                    tempStorage.GetVector(offset + storedI).count++;
+                    tempStorage.GetVector(offset + storedI).SetValue(pos, dataStorage[storedI]);
                 }
-                if (temp.size() == STANDARD_VECTOR_SIZE) {
+                //temp.Print();
+                if (tempStorage.size() == STANDARD_VECTOR_SIZE) {
 #if TIMER
                     auto startApp = std::chrono::high_resolution_clock::now();
 #endif
-                    result.Append(temp);
+                    result.Append(tempStorage);
 #if TIMER
                     auto endApp = std::chrono::high_resolution_clock::now();
                     timeForAppending += (endApp - startApp);
 #endif
-                    temp.Reset();
+                    tempStorage.Reset();
                 }
 #if TIMER
                 end = std::chrono::high_resolution_clock::now();
@@ -452,12 +453,12 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, ChunkCollection 
 #if TIMER
         auto startApp = std::chrono::high_resolution_clock::now();
 #endif
-        result.Append(temp);
+        //result.Append(temp);
 #if TIMER
         auto endApp = std::chrono::high_resolution_clock::now();
         timeForAppending += (endApp - startApp);
 #endif
-        temp.Reset();
+        //temp.Reset();
     }
 }
 
