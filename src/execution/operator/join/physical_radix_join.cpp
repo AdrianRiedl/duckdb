@@ -131,7 +131,6 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 
             size_t shift = 0;
             for (size_t r = 0; r < runs; r++) {
-                state->left_hash_to_DataSwap.resize(state->left_hash_to_Data.size());
                 RadixJoinSingleThreadedLeft(state, shift, r);
                 shift += numberOfBits[r];
 
@@ -214,7 +213,6 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             //! Start the partitioning phase with #runs runs and the bits in numberOfBits
             size_t shift = 0;
             for (size_t r = 0; r < runs; r++) {
-                state->right_hash_to_DataSwap.resize(state->right_hash_to_Data.size());
                 RadixJoinSingleThreadedRight(state, shift, r);
                 shift += numberOfBits[r];
 
@@ -227,9 +225,6 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             std::cerr << "Partitioning right side took: " << elapsed_seconds.count() << "s!" << std::endl;
 #endif
         }
-
-        state->right_hashes.clear();
-        state->left_hashes.clear();
 
         assert(state->old_left_histogram->numberOfPartitions == state->old_right_histogram->numberOfPartitions);
         assert(state->old_left_histogram->numberOfBucketsPerPartition ==

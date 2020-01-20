@@ -63,7 +63,9 @@ public:
 		}
 	};
 
+	// Pointer to the memory to store the tuples
 	uint8_t *data;
+	// Internal structure, to give back the results
 	std::vector<Value> dataStorage;
 
     public:
