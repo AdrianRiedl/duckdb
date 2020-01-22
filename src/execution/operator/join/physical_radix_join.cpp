@@ -4,12 +4,9 @@
 
 #include <iostream>
 #include <thread>
-#include <fstream>
 #include <atomic>
 
 #include "duckdb/execution/operator/join/physical_radix_join.hpp"
-//#include "duckdb/compressing/lz4.h"
-#include "duckdb/common/vector_operations/vector_operations.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/common/types/static_vector.hpp"
 
@@ -43,7 +40,6 @@ PhysicalRadixJoin::PhysicalRadixJoin(LogicalOperator &op, unique_ptr<PhysicalOpe
 }
 
 void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chunk, PhysicalOperatorState *state_) {
-    //std::ofstream checkStream("/Users/adrianriedl/Desktop/check.txt",std::fstream::app);
     auto startOp = std::chrono::high_resolution_clock::now();
     auto state = reinterpret_cast<PhysicalRadixJoinOperatorState *>(state_);
     auto left_typesGlobal = children[0]->GetTypes();
@@ -223,7 +219,6 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             start = std::chrono::high_resolution_clock::now();
 #endif
 
-
             //! Start the partitioning phase with #runs runs and the bits in numberOfBits
             size_t shift = 0;
             for (size_t r = 0; r < runs; r++) {
@@ -252,24 +247,12 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
         }
         partitions.resize(elements);
         {
-            std::vector<std::thread> threads;
             std::atomic<index_t> index;
             index = 0;
 #if TIMER
             auto start = std::chrono::high_resolution_clock::now();
 #endif
-#if SINGLETHREADED
             FillPartitions(state, index);
-#else
-            // TODO start as much threads as parititons to fill
-            for (size_t thread = 0; thread < concurentThreadsSupported; thread++) {
-                threads.push_back(std::thread(&PhysicalRadixJoin::FillPartitions, this, state, std::ref(index)));
-            }
-#endif
-
-            for (auto &t : threads) {
-                t.join();
-            }
 #if TIMER
             auto finish = std::chrono::high_resolution_clock::now();
             elapsed_seconds = finish - start;
@@ -306,7 +289,6 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             std::atomic<index_t> indexGlob;
             indexGlob = 0;
             // Assume we have at least one pair in shrink
-            ///////////////////////////////////////////////////////////////////
 #if TIMER
             auto startGetDChunk = std::chrono::high_resolution_clock::now();
 #endif
@@ -331,8 +313,10 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 #if TIMER
                 auto startGettingHT = std::chrono::high_resolution_clock::now();
 #endif
-                auto hash_table = make_unique<JoinHashTable>(conditions, right_typesGlobal, duckdb::JoinType::INNER);
-                auto scanStructure = make_unique<JoinHashTable::ScanStructure>(*hash_table.get());
+                auto hash_table = make_unique<RadixHashTable>(conditions, right_typesGlobal, duckdb::JoinType::INNER,
+                                                              2 * dummy_hash_table->NextPow2_64(
+                                                                      shrinked[i].second.second -
+                                                                      shrinked[i].second.first));
 #if TIMER
                 auto endGettingHT = std::chrono::high_resolution_clock::now();
                 gettingHashtable += endGettingHT - startGettingHT;
@@ -375,7 +359,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                     extractingValBuild += endExtract - startExtract;
                     startExtract = std::chrono::high_resolution_clock::now();
 #endif
-                    for (index_t col = 0; col < data.size()-1; col++) {
+                    for (index_t col = 0; col < data.size() - 1; col++) {
                         dataRight.data[col].count += 1;
                         dataRight.data[col].SetValue(pos, data[col]);
                     }
@@ -457,24 +441,21 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                         orderinghashProbe += endOrderingHash - startOrderingHash;
 #endif
                         try {
-                            scanStructure = hash_table->Probe(hashes);
+                            hash_table->Probe(hashes, dataLeft, tempStorage, result);
                         } catch (ConversionException &e) {
                             std::cout << "An exception in HT probe" << std::endl;
                         }
                         dataLeft.Reset();
                         pos = dataLeft.size();
-                        do {
-                            tempStorage.Reset();
-                            scanStructure->Next(hashes, dataLeft, tempStorage);
 #if TIMER
-                            auto appendTimerStart = std::chrono::high_resolution_clock::now();
+                        auto appendTimerStart = std::chrono::high_resolution_clock::now();
 #endif
-                            result.Append(tempStorage);
+                        result.Append(tempStorage);
 #if TIMER
-                            auto appendTimerEnd = std::chrono::high_resolution_clock::now();
-                            timeForAppending += appendTimerEnd - appendTimerStart;
+                        auto appendTimerEnd = std::chrono::high_resolution_clock::now();
+                        hash_table->timeForAppending += appendTimerEnd - appendTimerStart;
 #endif
-                        } while (tempStorage.size()>0);
+                        tempStorage.Reset();
                     }
 #if TIMER
                     auto startExtract = std::chrono::high_resolution_clock::now();
@@ -485,7 +466,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                     extractingValProbe += endExtract - startExtract;
                     startExtract = std::chrono::high_resolution_clock::now();
 #endif
-                    for (index_t col = 0; col < data.size()-1; col++) {
+                    for (index_t col = 0; col < data.size() - 1; col++) {
                         dataLeft.data[col].count += 1;
                         dataLeft.data[col].SetValue(pos, data[col]);
                     }
@@ -508,24 +489,19 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 #endif
 
                 try {
-                    scanStructure = hash_table->Probe(hashes);
+                    hash_table->Probe(hashes, dataLeft, tempStorage, result);
                 } catch (ConversionException &e) {
                     std::cout << "An exception in HT probe" << std::endl;
                 }
-                do {
-                    tempStorage.Reset();
-                    scanStructure->Next(hashes, dataLeft, tempStorage);
 #if TIMER
-                    auto appendTimerStart = std::chrono::high_resolution_clock::now();
+                auto appendTimerStart = std::chrono::high_resolution_clock::now();
 #endif
-                    result.Append(tempStorage);
+                result.Append(tempStorage);
 #if TIMER
-                    auto appendTimerEnd = std::chrono::high_resolution_clock::now();
-                    timeForAppending += appendTimerEnd - appendTimerStart;
+                auto appendTimerEnd = std::chrono::high_resolution_clock::now();
+                hash_table->timeForAppending += appendTimerEnd - appendTimerStart;
 #endif
-                } while (tempStorage.size()>0);
-
-
+                tempStorage.Reset();
 #if TIMER
                 auto finishProbe = std::chrono::high_resolution_clock::now();
                 timeProbe += finishProbe - startProbe;
@@ -564,7 +540,8 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
     }
 }
 
-void PhysicalRadixJoin::FillPartitions(PhysicalRadixJoinOperatorState *state, std::atomic<index_t> &index) {
+void __attribute__((always_inline))
+PhysicalRadixJoin::FillPartitions(PhysicalRadixJoinOperatorState *state, std::atomic<index_t> &index) {
     index_t i = 0;
     while (1) {
         //auto i = index++;
@@ -574,14 +551,6 @@ void PhysicalRadixJoin::FillPartitions(PhysicalRadixJoinOperatorState *state, st
         for (index_t j = 0; j < state->old_left_histogram->numberOfBucketsPerPartition; j++) {
             auto rangeLeft = state->old_left_histogram->getRangeAndPosition(i, j);
             auto rangeRight = state->old_right_histogram->getRangeAndPosition(i, j);
-#if PREFETCH
-            if(j == 0 || j == 1) {
-                    __builtin_prefetch(&state->left_data->GetChunk(std::get<0>(rangeLeft)));
-                    __builtin_prefetch(&state->left_data->GetChunk(std::get<1>(rangeLeft)));
-                    __builtin_prefetch(&state->left_data->GetChunk(std::get<0>(rangeRight)));
-                    __builtin_prefetch(&state->left_data->GetChunk(std::get<1>(rangeRight)));
-            }
-#endif
             partitions[i * state->old_left_histogram->numberOfBucketsPerPartition + j].first.first = std::get<0>(
                     rangeLeft);
             partitions[i * state->old_left_histogram->numberOfBucketsPerPartition + j].first.second = std::get<1>(
@@ -595,9 +564,10 @@ void PhysicalRadixJoin::FillPartitions(PhysicalRadixJoinOperatorState *state, st
     }
 }
 
-void PhysicalRadixJoin::RadixJoinPartitionWorkerLeft(PhysicalRadixJoinOperatorState *state, index_t startOfPartitions,
-                                                     index_t endOfPartitions, size_t bitmask, size_t bitMaskNextRun,
-                                                     size_t shift, size_t run, size_t partitionNumber) {
+void __attribute__((always_inline))
+PhysicalRadixJoin::RadixJoinPartitionWorkerLeft(PhysicalRadixJoinOperatorState *state, index_t startOfPartitions,
+                                                index_t endOfPartitions, size_t bitmask, size_t bitMaskNextRun,
+                                                size_t shift, size_t run, size_t partitionNumber) {
     // Iterate over the data given to this thread
     for (index_t toOrder = startOfPartitions; toOrder < endOfPartitions; toOrder++) {
         auto values = state->left_data->GetRow(toOrder);
@@ -622,12 +592,13 @@ void PhysicalRadixJoin::RadixJoinPartitionWorkerLeft(PhysicalRadixJoinOperatorSt
     }
 }
 
-void PhysicalRadixJoin::RadixJoinPartitionWorkerRight(PhysicalRadixJoinOperatorState *state, index_t startOfPartitions,
-                                                      index_t endOfPartitions, size_t bitmask, size_t bitMaskNextRun,
-                                                      size_t shift, size_t run, size_t partitionNumber) {
+void __attribute__((always_inline))
+PhysicalRadixJoin::RadixJoinPartitionWorkerRight(PhysicalRadixJoinOperatorState *state, index_t startOfPartitions,
+                                                 index_t endOfPartitions, size_t bitmask, size_t bitMaskNextRun,
+                                                 size_t shift, size_t run, size_t partitionNumber) {
     for (index_t toOrder = startOfPartitions; toOrder < endOfPartitions; toOrder++) {
         auto values = state->right_data->GetRow(toOrder);
-        auto hash = values[values.size()-1].value_.hash;
+        auto hash = values[values.size() - 1].value_.hash;
         auto partition = ((hash & bitmask) >> shift);
         assert(partition >= 0 && partition < state->old_right_histogram->numberOfPartitions *
                                              state->old_right_histogram->numberOfBucketsPerPartition);
@@ -641,7 +612,7 @@ void PhysicalRadixJoin::RadixJoinPartitionWorkerRight(PhysicalRadixJoinOperatorS
         }
         // Get the position where to insert from the old right histogram
         index_t position = state->old_right_histogram->getInsertPlace(partitionNumber, partition);
-        for(index_t i = 0; i< values.size(); i++) {
+        for (index_t i = 0; i < values.size(); i++) {
             state->right_data_partitioned->SetValue(i, position, values[i]);
         }
     }
@@ -664,19 +635,7 @@ void PhysicalRadixJoin::RadixJoinSingleThreadedLeft(PhysicalRadixJoinOperatorSta
     for (index_t part = 0; part < state->old_left_histogram->numberOfPartitions; part++) {
         // Get the start of the partition
         auto back = state->old_left_histogram->getRangeOfSuperpartition(part);
-#if SINGLETHREADED
         RadixJoinPartitionWorkerLeft(state, back.first, back.second, bitmask, bitMaskNextRun, shift, run, part);
-#if PREFETCH
-        if(part < state->old_left_histogram->numberOfPartitions-1) {
-            __builtin_prefetch(&state->left_data->GetChunk(state->old_left_histogram->getRangeOfSuperpartition(part+1).first));
-            __builtin_prefetch(&state->left_data->GetChunk(state->old_left_histogram->getRangeOfSuperpartition(part+1).second));
-        }
-#endif
-#else
-        threads.push_back(
-                std::thread(&PhysicalRadixJoin::RadixJoinPartitionWorkerLeft, this, state, back.first, back.second,
-                            bitmask, shift, run, part));
-#endif
     }
 }
 
@@ -699,19 +658,7 @@ void PhysicalRadixJoin::RadixJoinSingleThreadedRight(PhysicalRadixJoinOperatorSt
         for (index_t part = 0; part < state->old_right_histogram->numberOfPartitions; part++) {
             // Get the start of the partition
             auto back = state->old_right_histogram->getRangeOfSuperpartition(part);
-#if SINGLETHREADED
             RadixJoinPartitionWorkerRight(state, back.first, back.second, bitmask, bitMaskNextRun, shift, run, part);
-#if PREFETCH
-            if(part < state->old_right_histogram->numberOfPartitions-1) {
-                __builtin_prefetch(&state->right_data->GetChunk(state->old_right_histogram->getRangeOfSuperpartition(part+1).first));
-                __builtin_prefetch(&state->right_data->GetChunk(state->old_right_histogram->getRangeOfSuperpartition(part+1).second));
-            }
-#endif
-#else
-            threads.push_back(
-                    std::thread(&PhysicalRadixJoin::RadixJoinPartitionWorkerRight, this, state, back.first, back.second,
-                                bitmask, shift, run, part));
-#endif
         }
     }
 }

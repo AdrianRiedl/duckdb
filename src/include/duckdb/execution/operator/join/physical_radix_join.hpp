@@ -12,17 +12,13 @@
 #include "duckdb/execution/operator/join/physical_comparison_join.hpp"
 #include "duckdb/common/types/static_vector.hpp"
 
-#define SINGLETHREADED 1
 #define TIMERWHOLE 1
-#define PREFETCH 0
-#define CHUNKSIZE 1024*1024
 
 namespace duckdb {
 
 class Entry {
     public:
     uint64_t hash;
-    // I decided to use a storage bigger than the data I use
     uint64_t data[4];
 };
 
@@ -60,7 +56,7 @@ class Histogram {
     bool initialized;
 
 
-    void IncrementBucketCounter(index_t partition, index_t bucket) {
+    void __attribute__((always_inline)) IncrementBucketCounter(index_t partition, index_t bucket) {
         assert(partition < numberOfPartitions && bucket < numberOfBucketsPerPartition);
         histogram[partition][bucket] += 1;
     }
@@ -79,7 +75,7 @@ class Histogram {
     }
 
     // This method returns the place, where to insert the data in the bucket.
-    index_t getInsertPlace(index_t partition, index_t bucket) {
+    index_t __attribute__((always_inline)) getInsertPlace(index_t partition, index_t bucket) {
         auto back = getRangeAndPosition(partition, bucket);
         histogram[partition][bucket] -= 1;
         //Print();
@@ -87,7 +83,8 @@ class Histogram {
     }
 
     // start, end and the remaining space is given back
-    std::tuple<index_t, index_t, index_t> getRangeAndPosition(index_t partition, index_t bucket) {
+    std::tuple<index_t, index_t, index_t> __attribute__((always_inline))
+    getRangeAndPosition(index_t partition, index_t bucket) {
         assert(partition >= 0 && partition < numberOfPartitions);
         assert(bucket >= 0 && bucket < numberOfBucketsPerPartition);
         if (!initialized) {
@@ -99,7 +96,7 @@ class Histogram {
     }
 
     // This method returns the start index and the end index of the given bucket in the given partition
-    std::pair<index_t, index_t> getParition(index_t partition, index_t bucket) {
+    std::pair<index_t, index_t> __attribute__((always_inline)) getParition(index_t partition, index_t bucket) {
         assert(partition >= 0 && partition < numberOfPartitions);
         assert(bucket >= 0 && bucket < numberOfBucketsPerPartition);
         index_t startL = 0, endL = 0;
@@ -117,7 +114,7 @@ class Histogram {
     }
 
     // This method returns the start and end index of a partition
-    std::pair<index_t, index_t> getRangeOfSuperpartition(index_t partition) {
+    std::pair<index_t, index_t> __attribute__((always_inline)) getRangeOfSuperpartition(index_t partition) {
         assert(partition >= 0 && partition < numberOfPartitions);
         index_t start = 0;
         if (partition == 0) {
@@ -133,7 +130,7 @@ class Histogram {
         return {start, end};
     }
 
-    void Range() {
+    void __attribute__((always_inline)) Range() {
         if (!initialized) {
             index_t start = 0;
             for (index_t i = 0; i < numberOfPartitions; i++) {
@@ -181,7 +178,7 @@ class EntryStorage {
             if (tuplesOnActChunk == chunkSize) {
                 // In this case the actual chunk is full
                 // Allocate a new chunk for the data
-                auto *dataChunk = static_cast<uint8_t *>(calloc(chunkSize, sizeof(Entry)));
+                auto *dataChunk = static_cast<uint8_t *>(calloc(chunkSize, 8 + payloadLength));
                 data_chunks.push_back(dataChunk);
                 tuplesOnActChunk = 0;
                 lastChunk = data_chunks.size() - 1;
@@ -189,7 +186,6 @@ class EntryStorage {
                 lastChunkPointer += tuplesOnActChunk * (8 + payloadLength);
             }
             auto hash = hashes->GetValue(chunkIterator);
-            // chunk.GetVector(chunk.column_count - 1).GetValue(chunkIterator);
             // set the hashvalue
             memcpy(lastChunkPointer, &hash.value_.hash, 8);
             lastChunkPointer += 8;
@@ -219,12 +215,9 @@ class EntryStorage {
                     default:
                         throw "NotImplementedYet - Default";
                 }
-                //memcpy(lastChunkPointer, &chunk.GetVector(col).GetValue(chunkIterator).value_.bigint, )
-                //lastChunkPointer->data[col] = chunk.GetVector(col).GetValue(chunkIterator).value_.bigint;
             }
             tuplesOnActChunk++;
             containedElements++;
-            //lastChunkPointer++;
         }
     }
 
@@ -322,12 +315,12 @@ class EntryStorage {
         Printer::Print(ToString());
     }
 
-    std::vector<Value> &ExtractValues(size_t pos) {
+    std::vector<Value> &__attribute__((always_inline)) ExtractValues(size_t pos) {
         auto entry = GetEntry(pos);
         return std::get<1>(entry);
     }
 
-    size_t Size() {
+    size_t __attribute__((always_inline)) Size() {
         return containedElements;
     }
 
@@ -369,22 +362,9 @@ class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
     ChunkCollection *left_data;
     //! Collection of all data chunks from the left side to make the partitions
     ChunkCollection *left_data_partitioned;
-    //! Vector of the hashes
-    //std::vector<unique_ptr<StaticVector<uint64_t>>> left_hashes;
     //! Histogram
     unique_ptr<Histogram> left_histogram;
     unique_ptr<Histogram> old_left_histogram = nullptr;
-
-    //std::vector<std::pair<uint64_t, index_t>> left_hash_to_pos;
-    //std::vector<std::pair<uint64_t, index_t>> left_hash_to_posSwap;
-
-    //std::vector<std::pair<uint64_t, std::vector<Value>>> left_hash_to_Data;
-    //std::vector<std::pair<uint64_t, std::vector<Value>>> left_hash_to_DataSwap;
-
-    //unique_ptr<EntryStorage> left_tuples;
-    //unique_ptr<EntryStorage> left_tuplesSwap;
-    //EntryStorage *left_tuples;
-    //EntryStorage *left_tuplesSwap;
 
     /// Right side
     //! Temporary storage for the actual extraction of the join keys on the right side
@@ -393,22 +373,9 @@ class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
     ChunkCollection *right_data;
     //! Collection of all data chunks from the right side
     ChunkCollection *right_data_partitioned;
-    //! Vector of the hashes
-    //std::vector<unique_ptr<StaticVector<uint64_t>>> right_hashes;
     //!Histogram
     unique_ptr<Histogram> right_histogram;
     unique_ptr<Histogram> old_right_histogram = nullptr;
-
-    //std::vector<std::pair<uint64_t, index_t>> right_hash_to_pos;
-    //std::vector<std::pair<uint64_t, index_t>> right_hash_to_posSwap;
-
-    //std::vector<std::pair<uint64_t, std::vector<Value>>> right_hash_to_Data;
-    //std::vector<std::pair<uint64_t, std::vector<Value>>> right_hash_to_DataSwap;
-
-    //unique_ptr<EntryStorage> right_tuples;
-    //unique_ptr<EntryStorage> right_tuplesSwap;
-    //EntryStorage *right_tuples;
-    //EntryStorage *right_tuplesSwap;
 
     //! Whether or not the operator has already started
     bool initialized;
@@ -427,7 +394,6 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
 #endif
     }
 
-    // TODO
     //! As in PhysicalHashJoin (to initialize the important stuff
     unique_ptr<RadixHashTable> dummy_hash_table;
     //! A vector of all the partitions after pre-hashes. Pair of left and corresponding right side
@@ -458,7 +424,6 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
     std::chrono::duration<double> remaining;
     std::chrono::duration<double> orderinghashProbe;
     std::chrono::duration<double> extractingValProbe;
-    std::chrono::duration<double> timeForAppending;
     std::chrono::duration<double> writingDataProbe;
 
     public:
@@ -467,14 +432,6 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
     unique_ptr<PhysicalOperatorState> GetOperatorState() override;
 
     private:
-    //! This function is called in Partition to make the single partitions and put them to the temporaryPartitions.
-    //! In the last run, the partitions are set in the global partitions vector.
-    void RadixJoinSingleThreaded(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run);
-
-    void PerformBuildAndProbe(PhysicalRadixJoinOperatorState *state,
-                              vector<std::pair<std::pair<index_t, index_t>, std::pair<index_t, index_t>>> &shrinked,
-                              vector<TypeId> &expected, std::atomic<index_t> &index);
-
     void FillPartitions(PhysicalRadixJoinOperatorState *state, std::atomic<index_t> &index);
 
     void RadixJoinSingleThreadedLeft(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run);
@@ -488,19 +445,5 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
     void RadixJoinPartitionWorkerRight(PhysicalRadixJoinOperatorState *state, index_t startOfPartitions,
                                        index_t endOfPartitions, size_t bitmask, size_t bitmaskNextRun, size_t shift,
                                        size_t run, size_t partitionNumber);
-
-    /*void Partition(vector<StaticVector<uint64_t> *> &left_hashes, vector<StaticVector<uint64_t> *> &right_hashes,
-                   Histogram &left_histogram, Histogram &right_histogram);
-
-    void PartitionSingleChunk(std::pair<ChunkCollection, ChunkCollection> &pair,
-                              vector<std::pair<ChunkCollection, ChunkCollection>> &newPartitions, size_t amountOfBits,
-                              size_t shift);*/
-
-    /*void PerformBuildAndProbe(std::pair<ChunkCollection, ChunkCollection> &pair, std::vector<TypeId> &expected,
-                              size_t counter);*/
-
-    /*void
-    PartitionSingleChunkSide(ChunkCollection pair, vector<std::pair<ChunkCollection, ChunkCollection>> &newPartitions,
-                             size_t amountOfBits, size_t shift, bool right);*/
 };
 } // namespace duckdb
