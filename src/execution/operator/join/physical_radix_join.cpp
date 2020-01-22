@@ -627,8 +627,7 @@ void PhysicalRadixJoin::RadixJoinPartitionWorkerRight(PhysicalRadixJoinOperatorS
     }
 }
 
-void __attribute__((always_inline))
-PhysicalRadixJoin::RadixJoinSingleThreadedLeft(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run) {
+void PhysicalRadixJoin::RadixJoinSingleThreadedLeft(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run) {
     // Get the bitmask for this partition
     size_t bitmask = ((1 << numberOfBits[run]) - 1) << shift;
     // Get the bitmask for the next run
@@ -649,8 +648,7 @@ PhysicalRadixJoin::RadixJoinSingleThreadedLeft(PhysicalRadixJoinOperatorState *s
     }
 }
 
-void __attribute__((always_inline))
-PhysicalRadixJoin::RadixJoinSingleThreadedRight(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run) {
+void PhysicalRadixJoin::RadixJoinSingleThreadedRight(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run) {
     // Get the bitmask for this partition
     size_t bitmask = ((1 << numberOfBits[run]) - 1) << shift;
     // Get the bitmask for the next run
