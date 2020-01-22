@@ -63,6 +63,8 @@ os.chdir("./HashJoin")
 os.system("python3 makePlotsHash.py")
 os.chdir("./..")
 
+os.system("git stash")
+
 print("ChunkCollectionRadixJoin")
 os.chdir("..")
 os.system("git checkout ChunkCollectionRadixJoin")
@@ -77,6 +79,8 @@ modifyFileDuckDBRadixExOff()
 os.chdir("./HashJoin")
 os.system("python3 makePlotsHash.py")
 os.chdir("./..")
+
+os.system("git stash")
 
 print("master")
 os.chdir("..")
