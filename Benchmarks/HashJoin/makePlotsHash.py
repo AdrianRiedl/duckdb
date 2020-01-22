@@ -6,7 +6,7 @@ DEFINE = '#define RADIXJOIN_COUNT (size_t) {}*1024\n'
 HEADINGSTIMER = ["Tuples", "BuildHT", "ProbeHT", "Runtime"]
 
 START = 6
-END = 24
+END = 21
 
 def power2(ex):
     if ex == 0:
