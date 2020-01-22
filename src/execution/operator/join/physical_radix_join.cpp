@@ -527,10 +527,9 @@ PhysicalRadixJoin::FillPartitions(PhysicalRadixJoinOperatorState *state, std::at
     }
 }
 
-void __attribute__((always_inline))
-PhysicalRadixJoin::RadixJoinPartitionWorkerLeft(PhysicalRadixJoinOperatorState *state, index_t startOfPartitions,
-                                                index_t endOfPartitions, size_t bitmask, size_t bitMaskNextRun,
-                                                size_t shift, size_t run, size_t partitionNumber) {
+void PhysicalRadixJoin::RadixJoinPartitionWorkerLeft(PhysicalRadixJoinOperatorState *state, index_t startOfPartitions,
+                                                     index_t endOfPartitions, size_t bitmask, size_t bitMaskNextRun,
+                                                     size_t shift, size_t run, size_t partitionNumber) {
     // Iterate over the data given to this thread
     for (index_t toOrder = startOfPartitions; toOrder < endOfPartitions; toOrder++) {
         auto entry = state->left_tuples->GetEntry(toOrder);
@@ -551,10 +550,9 @@ PhysicalRadixJoin::RadixJoinPartitionWorkerLeft(PhysicalRadixJoinOperatorState *
     }
 }
 
-void __attribute__((always_inline))
-PhysicalRadixJoin::RadixJoinPartitionWorkerRight(PhysicalRadixJoinOperatorState *state, index_t startOfPartitions,
-                                                 index_t endOfPartitions, size_t bitmask, size_t bitMaskNextRun,
-                                                 size_t shift, size_t run, size_t partitionNumber) {
+void PhysicalRadixJoin::RadixJoinPartitionWorkerRight(PhysicalRadixJoinOperatorState *state, index_t startOfPartitions,
+                                                      index_t endOfPartitions, size_t bitmask, size_t bitMaskNextRun,
+                                                      size_t shift, size_t run, size_t partitionNumber) {
     for (index_t toOrder = startOfPartitions; toOrder < endOfPartitions; toOrder++) {
         auto entry = state->right_tuples->GetEntry(toOrder);
         auto partition = ((std::get<0>(entry) & bitmask) >> shift);
