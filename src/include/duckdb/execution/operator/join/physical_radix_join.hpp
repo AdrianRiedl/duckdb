@@ -13,14 +13,9 @@
 #include "duckdb/common/types/static_vector.hpp"
 
 #define TIMERWHOLE 1
+#define CHUNKSIZE 1024*1024
 
 namespace duckdb {
-
-class Entry {
-    public:
-    uint64_t hash;
-    uint64_t data[4];
-};
 
 class Histogram {
     public:
@@ -349,33 +344,27 @@ class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
     PhysicalRadixJoinOperatorState(PhysicalOperator *left, PhysicalOperator *right) : PhysicalOperatorState(left),
                                                                                       initialized(false) {
         assert(left && right);
-        left_data = new ChunkCollection();
-        right_data = new ChunkCollection();
-        left_data_partitioned = new ChunkCollection();
-        right_data_partitioned = new ChunkCollection();
     }
 
     /// Left side
     //! Temporary storage for the actual extraction of the join keys on the left side
     DataChunk left_join_keys;
-    //! Collection of all data chunks from the left side
-    ChunkCollection *left_data;
-    //! Collection of all data chunks from the left side to make the partitions
-    ChunkCollection *left_data_partitioned;
     //! Histogram
     unique_ptr<Histogram> left_histogram;
     unique_ptr<Histogram> old_left_histogram = nullptr;
 
+    unique_ptr<EntryStorage> left_tuples;
+    unique_ptr<EntryStorage> left_tuplesSwap;
+
     /// Right side
     //! Temporary storage for the actual extraction of the join keys on the right side
     DataChunk right_join_keys;
-    //! Collection of all data chunks from the right side
-    ChunkCollection *right_data;
-    //! Collection of all data chunks from the right side
-    ChunkCollection *right_data_partitioned;
     //!Histogram
     unique_ptr<Histogram> right_histogram;
     unique_ptr<Histogram> old_right_histogram = nullptr;
+
+    unique_ptr<EntryStorage> right_tuples;
+    unique_ptr<EntryStorage> right_tuplesSwap;
 
     //! Whether or not the operator has already started
     bool initialized;

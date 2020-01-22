@@ -45,7 +45,7 @@ RadixHashTable::RadixHashTable(vector<JoinCondition> &conditions, vector<TypeId>
                                index_t initial_capacity, bool parallel) : build_types(build_types), equality_size(0),
                                                                           condition_size(0), build_size(0),
                                                                           entry_size(0), tuple_size(0), join_type(type),
-                                                                          has_null(false), capacity(initial_capacity), count(0),
+                                                                          has_null(false), capacity(0), count(0),
                                                                           parallel(parallel) {
     bitmask = initial_capacity - 1;
     std::chrono::time_point<std::chrono::high_resolution_clock> start;
@@ -94,9 +94,6 @@ RadixHashTable::RadixHashTable(vector<JoinCondition> &conditions, vector<TypeId>
     }
     tuple_size = condition_size + build_size;
     entry_size = tuple_size + sizeof(void *);
-    //std::cout << "The initial cap is " << initial_capacity << " c" << condition_size << " " << build_size << std::endl;
-    //Resize(initial_capacity);
-    //std::cout << tuple_size << std::endl;
 
     // Malloc the corresponding size of the tuples with the initial capacity
     data = static_cast<uint8_t *>(calloc(initial_capacity, tuple_size + 1));
@@ -104,8 +101,6 @@ RadixHashTable::RadixHashTable(vector<JoinCondition> &conditions, vector<TypeId>
     for (index_t i = 0; i < dataStorage.size(); i++) {
         dataStorage[i].type = build_types[i];
     }
-    // Memory chunk to store all the conditions to compare
-    //probeMem = static_cast<uint8_t *>(calloc(1, condition_size));
 }
 
 void RadixHashTable::ApplyBitmask(Vector &hashes) {
@@ -331,9 +326,9 @@ void RadixHashTable::Build(DataChunk &keys, DataChunk &payload) {
     }
 }
 
-void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, DataChunk &tempStorage, ChunkCollection &result) {
-//    DataChunk temp;
-//    temp.Initialize(result.types);
+void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, ChunkCollection &result) {
+    DataChunk temp;
+    temp.Initialize(result.types);
     for (index_t i = 0; i < keys.size(); i++) {
         // Start bucket
         auto bucket = payload.GetVector(payload.column_count - 1).GetValue(i).value_.hash & bitmask;
@@ -391,10 +386,10 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, DataChunk &tempS
 #if TIMER
                 start = std::chrono::high_resolution_clock::now();
 #endif
-                index_t pos = tempStorage.size();
+                index_t pos = temp.size();
                 for (index_t payloadI = 0; payloadI < payload.column_count; payloadI++) {
-                    tempStorage.GetVector(payloadI).count++;
-                    tempStorage.GetVector(payloadI).SetValue(pos, payload.GetVector(payloadI).GetValue(i));
+                    temp.GetVector(payloadI).count++;
+                    temp.GetVector(payloadI).SetValue(pos, payload.GetVector(payloadI).GetValue(i));
                 }
                 index_t offset = payload.column_count;
                 for (index_t storedI = 0; storedI < build_types.size(); storedI++) {
@@ -404,7 +399,8 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, DataChunk &tempS
                     try {
                         size = GetTypeIdSize(type);
                     } catch (ConversionException &e) {
-                        std::cout << "An exception in GetTypeIdSize occurred for gettung values in HT probe" << std::endl;
+                        std::cout << "An exception in GetTypeIdSize occurred for gettung values in HT probe"
+                                  << std::endl;
                     }
                     switch (type) {
                         case TypeId::SMALLINT: {
@@ -427,20 +423,19 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, DataChunk &tempS
                     }
                 }
                 for (index_t storedI = 0; storedI < build_types.size(); storedI++) {
-                    tempStorage.GetVector(offset + storedI).count++;
-                    tempStorage.GetVector(offset + storedI).SetValue(pos, dataStorage[storedI]);
+                    temp.GetVector(offset + storedI).count++;
+                    temp.GetVector(offset + storedI).SetValue(pos, dataStorage[storedI]);
                 }
-                //temp.Print();
-                if (tempStorage.size() == STANDARD_VECTOR_SIZE) {
+                if (temp.size() == STANDARD_VECTOR_SIZE) {
 #if TIMER
                     auto startApp = std::chrono::high_resolution_clock::now();
 #endif
-                    result.Append(tempStorage);
+                    result.Append(temp);
 #if TIMER
                     auto endApp = std::chrono::high_resolution_clock::now();
                     timeForAppending += (endApp - startApp);
 #endif
-                    tempStorage.Reset();
+                    temp.Reset();
                 }
 #if TIMER
                 end = std::chrono::high_resolution_clock::now();
@@ -453,12 +448,12 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, DataChunk &tempS
 #if TIMER
         auto startApp = std::chrono::high_resolution_clock::now();
 #endif
-        //result.Append(temp);
+        result.Append(temp);
 #if TIMER
         auto endApp = std::chrono::high_resolution_clock::now();
         timeForAppending += (endApp - startApp);
 #endif
-        //temp.Reset();
+        temp.Reset();
     }
 }
 
@@ -473,37 +468,3 @@ RadixHashTable::~RadixHashTable() {
 #endif
     free(data);
 }
-
-namespace duckdb {
-void ConstructMarkJoinResultRadix(DataChunk &join_keys, DataChunk &child, DataChunk &result, bool found_match[],
-                                  bool right_has_null) {
-    // for the initial set of columns we just reference the left side
-    for (index_t i = 0; i < child.column_count; i++) {
-        result.data[i].Reference(child.data[i]);
-    }
-    // create the result matching vector
-    auto &result_vector = result.data[child.column_count];
-    result_vector.count = child.size();
-    // first we set the NULL values from the join keys
-    // if there is any NULL in the keys, the result is NULL
-    if (join_keys.column_count > 0) {
-        result_vector.nullmask = join_keys.data[0].nullmask;
-        for (index_t i = 1; i < join_keys.column_count; i++) {
-            result_vector.nullmask |= join_keys.data[i].nullmask;
-        }
-    }
-    // now set the remaining entries to either true or false based on whether a match was found
-    auto bool_result = (bool *) result_vector.data;
-    for (index_t i = 0; i < result_vector.count; i++) {
-        bool_result[i] = found_match[i];
-    }
-    // if the right side contains NULL values, the result of any FALSE becomes NULL
-    if (right_has_null) {
-        for (index_t i = 0; i < result_vector.count; i++) {
-            if (!bool_result[i]) {
-                result_vector.nullmask[i] = true;
-            }
-        }
-    }
-}
-} // namespace duckdb
