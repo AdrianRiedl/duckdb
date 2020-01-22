@@ -60,7 +60,7 @@ class Histogram {
     bool initialized;
 
 
-    void IncrementBucketCounter(index_t partition, index_t bucket) {
+    void __attribute__((always_inline)) IncrementBucketCounter(index_t partition, index_t bucket) {
         assert(partition < numberOfPartitions && bucket < numberOfBucketsPerPartition);
         histogram[partition][bucket] += 1;
     }
@@ -79,7 +79,7 @@ class Histogram {
     }
 
     // This method returns the place, where to insert the data in the bucket.
-    index_t getInsertPlace(index_t partition, index_t bucket) {
+    index_t __attribute__((always_inline)) getInsertPlace(index_t partition, index_t bucket) {
         auto back = getRangeAndPosition(partition, bucket);
         histogram[partition][bucket] -= 1;
         //Print();
@@ -87,7 +87,8 @@ class Histogram {
     }
 
     // start, end and the remaining space is given back
-    std::tuple<index_t, index_t, index_t> getRangeAndPosition(index_t partition, index_t bucket) {
+    std::tuple<index_t, index_t, index_t> __attribute__((always_inline))
+    getRangeAndPosition(index_t partition, index_t bucket) {
         assert(partition >= 0 && partition < numberOfPartitions);
         assert(bucket >= 0 && bucket < numberOfBucketsPerPartition);
         if (!initialized) {
@@ -99,7 +100,7 @@ class Histogram {
     }
 
     // This method returns the start index and the end index of the given bucket in the given partition
-    std::pair<index_t, index_t> getParition(index_t partition, index_t bucket) {
+    std::pair<index_t, index_t> __attribute__((always_inline)) getParition(index_t partition, index_t bucket) {
         assert(partition >= 0 && partition < numberOfPartitions);
         assert(bucket >= 0 && bucket < numberOfBucketsPerPartition);
         index_t startL = 0, endL = 0;
@@ -117,7 +118,7 @@ class Histogram {
     }
 
     // This method returns the start and end index of a partition
-    std::pair<index_t, index_t> getRangeOfSuperpartition(index_t partition) {
+    std::pair<index_t, index_t> __attribute__((always_inline)) getRangeOfSuperpartition(index_t partition) {
         assert(partition >= 0 && partition < numberOfPartitions);
         index_t start = 0;
         if (partition == 0) {
@@ -133,7 +134,7 @@ class Histogram {
         return {start, end};
     }
 
-    void Range() {
+    void __attribute__((always_inline)) Range() {
         if (!initialized) {
             index_t start = 0;
             for (index_t i = 0; i < numberOfPartitions; i++) {
@@ -356,59 +357,33 @@ class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
     PhysicalRadixJoinOperatorState(PhysicalOperator *left, PhysicalOperator *right) : PhysicalOperatorState(left),
                                                                                       initialized(false) {
         assert(left && right);
-        left_data = new ChunkCollection();
-        right_data = new ChunkCollection();
-        left_data_partitioned = new ChunkCollection();
-        right_data_partitioned = new ChunkCollection();
+        left_data = make_unique<ChunkCollection>();
+        right_data = make_unique<ChunkCollection>();
+        left_data_partitioned = make_unique<ChunkCollection>();
+        right_data_partitioned = make_unique<ChunkCollection>();
     }
 
     /// Left side
     //! Temporary storage for the actual extraction of the join keys on the left side
     DataChunk left_join_keys;
     //! Collection of all data chunks from the left side
-    ChunkCollection *left_data;
+    unique_ptr<ChunkCollection> left_data;
     //! Collection of all data chunks from the left side to make the partitions
-    ChunkCollection *left_data_partitioned;
-    //! Vector of the hashes
-    //std::vector<unique_ptr<StaticVector<uint64_t>>> left_hashes;
+    unique_ptr<ChunkCollection> left_data_partitioned;
     //! Histogram
     unique_ptr<Histogram> left_histogram;
     unique_ptr<Histogram> old_left_histogram = nullptr;
-
-    //std::vector<std::pair<uint64_t, index_t>> left_hash_to_pos;
-    //std::vector<std::pair<uint64_t, index_t>> left_hash_to_posSwap;
-
-    //std::vector<std::pair<uint64_t, std::vector<Value>>> left_hash_to_Data;
-    //std::vector<std::pair<uint64_t, std::vector<Value>>> left_hash_to_DataSwap;
-
-    //unique_ptr<EntryStorage> left_tuples;
-    //unique_ptr<EntryStorage> left_tuplesSwap;
-    //EntryStorage *left_tuples;
-    //EntryStorage *left_tuplesSwap;
 
     /// Right side
     //! Temporary storage for the actual extraction of the join keys on the right side
     DataChunk right_join_keys;
     //! Collection of all data chunks from the right side
-    ChunkCollection *right_data;
+    unique_ptr<ChunkCollection> right_data;
     //! Collection of all data chunks from the right side
-    ChunkCollection *right_data_partitioned;
-    //! Vector of the hashes
-    //std::vector<unique_ptr<StaticVector<uint64_t>>> right_hashes;
+    unique_ptr<ChunkCollection> right_data_partitioned;
     //!Histogram
     unique_ptr<Histogram> right_histogram;
     unique_ptr<Histogram> old_right_histogram = nullptr;
-
-    //std::vector<std::pair<uint64_t, index_t>> right_hash_to_pos;
-    //std::vector<std::pair<uint64_t, index_t>> right_hash_to_posSwap;
-
-    //std::vector<std::pair<uint64_t, std::vector<Value>>> right_hash_to_Data;
-    //std::vector<std::pair<uint64_t, std::vector<Value>>> right_hash_to_DataSwap;
-
-    //unique_ptr<EntryStorage> right_tuples;
-    //unique_ptr<EntryStorage> right_tuplesSwap;
-    //EntryStorage *right_tuples;
-    //EntryStorage *right_tuplesSwap;
 
     //! Whether or not the operator has already started
     bool initialized;
