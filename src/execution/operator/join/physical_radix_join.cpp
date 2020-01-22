@@ -138,9 +138,9 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 RadixJoinSingleThreadedLeft(state, shift, r);
                 shift += numberOfBits[r];
 
-                auto temp = state->left_data;
-                state->left_data = state->left_data_partitioned;
-                state->left_data_partitioned = temp;
+                auto temp = std::move(state->left_data);
+                state->left_data = std::move(state->left_data_partitioned);
+                state->left_data_partitioned = std::move(temp);
             }
 #if TIMER
             finish = std::chrono::high_resolution_clock::now();
@@ -225,9 +225,9 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 RadixJoinSingleThreadedRight(state, shift, r);
                 shift += numberOfBits[r];
 
-                auto temp = state->right_data;
-                state->right_data = state->right_data_partitioned;
-                state->right_data_partitioned = temp;
+                auto temp = std::move(state->right_data);
+                state->right_data = std::move(state->right_data_partitioned);
+                state->right_data_partitioned = std::move(temp);
             }
 #if TIMER
             finish = std::chrono::high_resolution_clock::now();
