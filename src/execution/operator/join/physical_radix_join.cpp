@@ -235,6 +235,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             }
 #if TIMER
             finish = std::chrono::high_resolution_clock::now();
+            elapsed_seconds = finish - start;
             std::cerr << "Partitioning right side took: " << elapsed_seconds.count() << "s!" << std::endl;
 #endif
         }
