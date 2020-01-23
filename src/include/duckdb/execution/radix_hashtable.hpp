@@ -17,7 +17,8 @@
 
 #include <mutex>
 
-#define TIMER 0
+#define TIMER 1
+#define TIMERDETAILED 0
 
 
 namespace duckdb {
