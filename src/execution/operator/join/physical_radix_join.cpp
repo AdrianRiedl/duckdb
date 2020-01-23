@@ -289,7 +289,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             std::atomic<index_t> indexGlob;
             indexGlob = 0;
             // Assume we have at least one pair in shrink
-#if TIMER
+#if TIMERDETAILED
             auto startGetDChunk = std::chrono::high_resolution_clock::now();
 #endif
             DataChunk dataRight;
@@ -297,7 +297,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             // The datachunk for the hashes of this partition
             DataChunk hashes;
             hashes.Initialize(dummy_hash_table->condition_types);
-#if TIMER
+#if TIMERDETAILED
             auto endGetDChunk = std::chrono::high_resolution_clock::now();
             gettingDChunk += endGetDChunk - startGetDChunk;
 #endif
@@ -310,14 +310,14 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 if (i >= shrinked.size()) {
                     break;
                 }
-#if TIMER
+#if TIMERDETAILED
                 auto startGettingHT = std::chrono::high_resolution_clock::now();
 #endif
                 auto hash_table = make_unique<RadixHashTable>(conditions, right_typesGlobal, duckdb::JoinType::INNER,
                                                               2 * dummy_hash_table->NextPow2_64(
                                                                       shrinked[i].second.second -
                                                                       shrinked[i].second.first));
-#if TIMER
+#if TIMERDETAILED
                 auto endGettingHT = std::chrono::high_resolution_clock::now();
                 gettingHashtable += endGettingHT - startGettingHT;
 #endif
@@ -328,7 +328,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                     if (pos == STANDARD_VECTOR_SIZE) {
                         // If the datachunk is full, then insert it into the hashtable
                         // Make the hashes
-#if TIMER
+#if TIMERDETAILED
                         auto startOrderingHash = std::chrono::high_resolution_clock::now();
 #endif
                         hashes.Reset();
@@ -336,7 +336,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                         for (index_t col = 0; col < conditions.size(); col++) {
                             executorR.ExecuteExpression(*conditions[col].right, hashes.data[col]);
                         }
-#if TIMER
+#if TIMERDETAILED
                         auto endOrderingHash = std::chrono::high_resolution_clock::now();
                         orderinghashBuild += endOrderingHash - startOrderingHash;
 #endif
@@ -350,11 +350,11 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                         dataRight.Reset();
                         pos = dataRight.size();
                     }
-#if TIMER
+#if TIMERDETAILED
                     auto startExtract = std::chrono::high_resolution_clock::now();
 #endif
                     auto data = state->right_data->GetRow(index);
-#if TIMER
+#if TIMERDETAILED
                     auto endExtract = std::chrono::high_resolution_clock::now();
                     extractingValBuild += endExtract - startExtract;
                     startExtract = std::chrono::high_resolution_clock::now();
@@ -363,7 +363,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                         dataRight.data[col].count += 1;
                         dataRight.data[col].SetValue(pos, data[col]);
                     }
-#if TIMER
+#if TIMERDETAILED
                     endExtract = std::chrono::high_resolution_clock::now();
                     writingDataBuild += endExtract - startExtract;
 #endif
@@ -371,7 +371,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 // After the end of this partition insert into hashtable
                 // Reset the hashes
 
-#if TIMER
+#if TIMERDETAILED
                 auto startOrderingHash = std::chrono::high_resolution_clock::now();
 #endif
                 hashes.Reset();
@@ -379,7 +379,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 for (index_t j = 0; j < conditions.size(); j++) {
                     executorR.ExecuteExpression(*conditions[j].right, hashes.data[j]);
                 }
-#if TIMER
+#if TIMERDETAILED
                 auto endOrderingHash = std::chrono::high_resolution_clock::now();
                 orderinghashBuild += endOrderingHash - startOrderingHash;
 #endif
@@ -393,22 +393,25 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 #if TIMER
                 auto finishBuild = std::chrono::high_resolution_clock::now();
                 timeBuild += finishBuild - startBuild;
+#endif
                 //// Up to this point, the right side is in the hashtable
-
+#if TIMER
                 // Now continue with the left side
                 auto startProbe = std::chrono::high_resolution_clock::now();
+#endif
+#if TIMERDETAILED
                 startGetDChunk = std::chrono::high_resolution_clock::now();
 #endif
                 DataChunk dataLeft;
 
                 dataLeft.Initialize(left_typesGlobal);
                 hashes.Initialize(hash_table->condition_types);
-#if TIMER
+#if TIMERDETAILED
                 endGetDChunk = std::chrono::high_resolution_clock::now();
                 gettingDChunk += endGetDChunk - startGetDChunk;
 #endif
 
-#if TIMER
+#if TIMERDETAILED
                 auto startRemaining = std::chrono::high_resolution_clock::now();
 #endif
                 vector<TypeId> all;
@@ -421,14 +424,14 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 result.types = all;
                 DataChunk tempStorage;
                 tempStorage.Initialize(all);
-#if TIMER
+#if TIMERDETAILED
                 auto endRemaining = std::chrono::high_resolution_clock::now();
                 remaining += endRemaining - startRemaining;
 #endif
                 for (index_t index = shrinked[i].first.first; index < shrinked[i].first.second; index++) {
                     index_t pos = dataLeft.size();
                     if (dataLeft.size() == STANDARD_VECTOR_SIZE) {
-#if TIMER
+#if TIMERDETAILED
                         auto startOrderingHash = std::chrono::high_resolution_clock::now();
 #endif
                         hashes.Reset();
@@ -436,7 +439,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                         for (index_t j = 0; j < conditions.size(); j++) {
                             executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
                         }
-#if TIMER
+#if TIMERDETAILED
                         auto endOrderingHash = std::chrono::high_resolution_clock::now();
                         orderinghashProbe += endOrderingHash - startOrderingHash;
 #endif
@@ -447,21 +450,21 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                         }
                         dataLeft.Reset();
                         pos = dataLeft.size();
-#if TIMER
+#if TIMERDETAILED
                         auto appendTimerStart = std::chrono::high_resolution_clock::now();
 #endif
                         result.Append(tempStorage);
-#if TIMER
+#if TIMERDETAILED
                         auto appendTimerEnd = std::chrono::high_resolution_clock::now();
                         hash_table->timeForAppending += appendTimerEnd - appendTimerStart;
 #endif
                         tempStorage.Reset();
                     }
-#if TIMER
+#if TIMERDETAILED
                     auto startExtract = std::chrono::high_resolution_clock::now();
 #endif
                     auto data = state->left_data->GetRow(index);
-#if TIMER
+#if TIMERDETAILED
                     auto endExtract = std::chrono::high_resolution_clock::now();
                     extractingValProbe += endExtract - startExtract;
                     startExtract = std::chrono::high_resolution_clock::now();
@@ -470,20 +473,20 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                         dataLeft.data[col].count += 1;
                         dataLeft.data[col].SetValue(pos, data[col]);
                     }
-#if TIMER
+#if TIMERDETAILED
                     endExtract = std::chrono::high_resolution_clock::now();
                     writingDataProbe += endExtract - startExtract;
 #endif
                 }
                 hashes.Reset();
-#if TIMER
+#if TIMERDETAILED
                 startOrderingHash = std::chrono::high_resolution_clock::now();
 #endif
                 ExpressionExecutor executorL(dataLeft);
                 for (index_t j = 0; j < conditions.size(); j++) {
                     executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
                 }
-#if TIMER
+#if TIMERDETAILED
                 endOrderingHash = std::chrono::high_resolution_clock::now();
                 orderinghashProbe += endOrderingHash - startOrderingHash;
 #endif
@@ -493,11 +496,11 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 } catch (ConversionException &e) {
                     std::cout << "An exception in HT probe" << std::endl;
                 }
-#if TIMER
+#if TIMERDETAILED
                 auto appendTimerStart = std::chrono::high_resolution_clock::now();
 #endif
                 result.Append(tempStorage);
-#if TIMER
+#if TIMERDETAILED
                 auto appendTimerEnd = std::chrono::high_resolution_clock::now();
                 hash_table->timeForAppending += appendTimerEnd - appendTimerStart;
 #endif
@@ -511,6 +514,8 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             auto finishPerfBuildAndProbe = std::chrono::high_resolution_clock::now();
             elapsed_seconds = finishPerfBuildAndProbe - startPerfBuildAndProbe;
             std::cerr << "Performing build and probe took: " << elapsed_seconds.count() << "s!" << std::endl;
+#endif
+#if TIMERDETAILED
             std::cerr << "Performing orderingHashBuild took: " << orderinghashBuild.count() << "s!" << std::endl;
             std::cerr << "Performing gettingHashtable took: " << gettingHashtable.count() << "s!" << std::endl;
             std::cerr << "Performing extractingValBuild took: " << extractingValBuild.count() << "s!" << std::endl;

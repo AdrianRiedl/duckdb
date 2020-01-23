@@ -234,12 +234,12 @@ void RadixHashTable::Build(DataChunk &keys, DataChunk &payload) {
     if (keys.size() == 0) {
         return;
     }
-#if TIMER
+#if TIMERDETAILED
     auto start = std::chrono::high_resolution_clock::now();
     auto end = std::chrono::high_resolution_clock::now();
 #endif
     for (index_t i = 0; i < keys.size(); i++) {
-#if TIMER
+#if TIMERDETAILED
         start = std::chrono::high_resolution_clock::now();
 #endif
         auto bucket = payload.GetVector(payload.column_count - 1).GetValue(i).value_.hash & bitmask;
@@ -248,7 +248,7 @@ void RadixHashTable::Build(DataChunk &keys, DataChunk &payload) {
             bucket++;
             bucket &= bitmask;
         }
-#if TIMER
+#if TIMERDETAILED
         end = std::chrono::high_resolution_clock::now();
         timeBucketSearchBuild += end - start;
 #endif
@@ -256,7 +256,7 @@ void RadixHashTable::Build(DataChunk &keys, DataChunk &payload) {
         // Signal for a taken bucket
         writer[0] = 0xff;
         writer++;
-#if TIMER
+#if TIMERDETAILED
         start = std::chrono::high_resolution_clock::now();
 #endif
         auto vec = keys.GetTypes();
@@ -289,7 +289,7 @@ void RadixHashTable::Build(DataChunk &keys, DataChunk &payload) {
                     throw "Not implemented in RadixJoinHashTable";
             }
         }
-#if TIMER
+#if TIMERDETAILED
         end = std::chrono::high_resolution_clock::now();
         timeForKeyInsert += (end - start);
 
@@ -324,7 +324,7 @@ void RadixHashTable::Build(DataChunk &keys, DataChunk &payload) {
                     throw "Not implemented in RadixJoinHashTable";
             }
         }
-#if TIMER
+#if TIMERDETAILED
         end = std::chrono::high_resolution_clock::now();
         timeForDataInsert += end - start;
 #endif
@@ -343,7 +343,7 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, DataChunk &tempS
             uint8_t *reader = data + bucket * (tuple_size + 1);
             // Skip the 0xff
             reader++;
-#if TIMER
+#if TIMERDETAILED
             auto start = std::chrono::high_resolution_clock::now();
 #endif
             for (index_t keyI = 0; keyI < keys.column_count; keyI++) {
@@ -381,14 +381,14 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, DataChunk &tempS
                         throw "Not yet implemented here";
                 }
             }
-#if TIMER
+#if TIMERDETAILED
             auto end = std::chrono::high_resolution_clock::now();
             timeForKeyProbe += (end - start);
 #endif
             // Match found
             // reader is now at the position with the data
             if (checkKey) {
-#if TIMER
+#if TIMERDETAILED
                 start = std::chrono::high_resolution_clock::now();
 #endif
                 index_t pos = tempStorage.size();
@@ -432,17 +432,17 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, DataChunk &tempS
                 }
                 //temp.Print();
                 if (tempStorage.size() == STANDARD_VECTOR_SIZE) {
-#if TIMER
+#if TIMERDETAILED
                     auto startApp = std::chrono::high_resolution_clock::now();
 #endif
                     result.Append(tempStorage);
-#if TIMER
+#if TIMERDETAILED
                     auto endApp = std::chrono::high_resolution_clock::now();
                     timeForAppending += (endApp - startApp);
 #endif
                     tempStorage.Reset();
                 }
-#if TIMER
+#if TIMERDETAILED
                 end = std::chrono::high_resolution_clock::now();
                 timeForTupleBuild += (end - start);
 #endif
@@ -450,11 +450,11 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, DataChunk &tempS
             bucket++;
             bucket = bucket & (bitmask);
         }
-#if TIMER
+#if TIMERDETAILED
         auto startApp = std::chrono::high_resolution_clock::now();
 #endif
         //result.Append(temp);
-#if TIMER
+#if TIMERDETAILED
         auto endApp = std::chrono::high_resolution_clock::now();
         timeForAppending += (endApp - startApp);
 #endif
@@ -463,7 +463,7 @@ void RadixHashTable::Probe(DataChunk &keys, DataChunk &payload, DataChunk &tempS
 }
 
 RadixHashTable::~RadixHashTable() {
-#if TIMER
+#if TIMERDETAILED
     std::cerr << "Building for the keys took " << timeForKeyInsert.count() << "s!" << std::endl;
     std::cerr << "BucketBuildSearchtime took " << timeBucketSearchBuild.count() << "s!" << std::endl;
     std::cerr << "Building for the values took " << timeForDataInsert.count() << "s!" << std::endl;
