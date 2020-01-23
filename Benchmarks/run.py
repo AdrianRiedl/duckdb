@@ -48,44 +48,44 @@ def modifyFileDuckDBRadixExOff():
     
 
 
-print("ChunkCollectionJoinHashTable")
-os.chdir("..")
-os.system("git checkout ChunkCollectionJoinHashTable")
-os.chdir("./Benchmarks")
+# print("ChunkCollectionJoinHashTable")
+# os.chdir("..")
+# os.system("git checkout ChunkCollectionJoinHashTable")
+# os.chdir("./Benchmarks")
+#
+# modifyFileDuckDBRadixExOn()
+# os.chdir("./RadixJoin")
+# os.system("python3 makePlotsRadix.py")
+# os.chdir("./..")
 
-modifyFileDuckDBRadixExOn()
-os.chdir("./RadixJoin")
-os.system("python3 makePlotsRadix.py")
-os.chdir("./..")
+# modifyFileDuckDBRadixExOff()
+# os.chdir("./HashJoin")
+# os.system("python3 makePlotsHash.py")
+# os.chdir("./..")
 
-modifyFileDuckDBRadixExOff()
-os.chdir("./HashJoin")
-os.system("python3 makePlotsHash.py")
-os.chdir("./..")
+# os.system("git stash")
+#
+# print("ChunkCollectionRadixJoin")
+# os.chdir("..")
+# os.system("git checkout ChunkCollectionRadixJoin")
+# os.chdir("./Benchmarks")
+#
+# modifyFileDuckDBRadixExOn()
+# os.chdir("./RadixJoin")
+# os.system("python3 makePlotsRadix.py")
+# os.chdir("./..")
+#
+# modifyFileDuckDBRadixExOff()
+# os.chdir("./HashJoin")
+# os.system("python3 makePlotsHash.py")
+# os.chdir("./..")
 
-os.system("git stash")
-
-print("ChunkCollectionRadixJoin")
-os.chdir("..")
-os.system("git checkout ChunkCollectionRadixJoin")
-os.chdir("./Benchmarks")
-
-modifyFileDuckDBRadixExOn()
-os.chdir("./RadixJoin")
-os.system("python3 makePlotsRadix.py")
-os.chdir("./..")
-
-modifyFileDuckDBRadixExOff()
-os.chdir("./HashJoin")
-os.system("python3 makePlotsHash.py")
-os.chdir("./..")
-
-os.system("git stash")
+#os.system("git stash")
 
 print("master")
-os.chdir("..")
-os.system("git checkout master")
-os.chdir("./Benchmarks")
+# os.chdir("..")
+# os.system("git checkout master")
+# os.chdir("./Benchmarks")
 
 modifyFileDuckDBRadixExOn()
 os.chdir("./RadixJoin")
