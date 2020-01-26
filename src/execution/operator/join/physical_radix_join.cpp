@@ -41,6 +41,10 @@ PhysicalRadixJoin::PhysicalRadixJoin(LogicalOperator &op, unique_ptr<PhysicalOpe
 
 void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chunk, PhysicalOperatorState *state_) {
     auto startOp = std::chrono::high_resolution_clock::now();
+    auto concurrent = std::thread::hardware_concurrency();
+    if (!concurrent) {
+        concurrent = 1;
+    }
     auto state = reinterpret_cast<PhysicalRadixJoinOperatorState *>(state_);
     auto left_typesGlobal = children[0]->GetTypes();
     index_t leftSize = 0;
@@ -80,8 +84,8 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 size += GetTypeIdSize(t);
             }
 
-            state->left_tuples = make_unique<EntryStorage>(CHUNKSIZE, size, left_types);
-            state->left_tuplesSwap = make_unique<EntryStorage>(CHUNKSIZE, size, left_types);
+            state->left_tuples = make_unique<EntryStorage>(CHUNKSIZE, size, left_types, concurrent);
+            state->left_tuplesSwap = make_unique<EntryStorage>(CHUNKSIZE, size, left_types, concurrent);
 
             //! Fetch all the chunks from the left side
             // Generate the histogram for the left side
@@ -126,7 +130,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 
             size_t shift = 0;
             for (size_t r = 0; r < runs; r++) {
-                RadixJoinSingleThreadedLeft(state, shift, r);
+                RadixJoinSingleThreadedLeft(state, shift, r, concurrent);
                 shift += numberOfBits[r];
 
                 auto temp = std::move(state->left_tuples);
@@ -158,8 +162,8 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
                 size += GetTypeIdSize(t);
             }
 
-            state->right_tuples = make_unique<EntryStorage>(CHUNKSIZE, size, right_types);
-            state->right_tuplesSwap = make_unique<EntryStorage>(CHUNKSIZE, size, right_types);
+            state->right_tuples = make_unique<EntryStorage>(CHUNKSIZE, size, right_types, concurrent);
+            state->right_tuplesSwap = make_unique<EntryStorage>(CHUNKSIZE, size, right_types, concurrent);
 
             //! Fetch all the chunks from the right side
             // Generate the histogram for the right side
@@ -205,7 +209,7 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             //! Start the partitioning phase with #runs runs and the bits in numberOfBits
             size_t shift = 0;
             for (size_t r = 0; r < runs; r++) {
-                RadixJoinSingleThreadedRight(state, shift, r);
+                RadixJoinSingleThreadedRight(state, shift, r, concurrent);
                 shift += numberOfBits[r];
 
                 auto temp = std::move(state->right_tuples);
@@ -246,6 +250,12 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
         size_t partitionsrelevant = 0;
         vector<std::pair<std::pair<index_t, index_t>, std::pair<index_t, index_t>>> shrinked;
         vector<TypeId> expected;
+        for (auto t : left_typesGlobal) {
+            expected.push_back(t);
+        }
+        for (auto t : right_typesGlobal) {
+            expected.push_back(t);
+        }
         {
 #if TIMER
             auto start = std::chrono::high_resolution_clock::now();
@@ -270,206 +280,26 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
             auto startPerfBuildAndProbe = std::chrono::high_resolution_clock::now();
 #endif
 
-            std::atomic<index_t> indexGlob;
+            std::atomic<uint64_t> indexGlob;
+            std::mutex lock;
             indexGlob = 0;
-            // Assume we have at least one pair in shrink
-#if TIMERDETAILED
-            auto startGetDChunk = std::chrono::high_resolution_clock::now();
-#endif
-            DataChunk dataRight;
-            dataRight.Initialize(right_typesGlobal);
-            // The datachunk for the hashes of this partition
-            DataChunk hashes;
-            hashes.Initialize(dummy_hash_table->condition_types);
-#if TIMERDETAILED
-            auto endGetDChunk = std::chrono::high_resolution_clock::now();
-            gettingDChunk += endGetDChunk - startGetDChunk;
-#endif
-            result.types = expected;
-            while (1) {
-#if TIMER
-                auto startBuild = std::chrono::high_resolution_clock::now();
-#endif
-                auto i = indexGlob++;
-                if (i >= shrinked.size()) {
-                    break;
-                }
-#if TIMERDETAILED
-                auto startGettingHT = std::chrono::high_resolution_clock::now();
-#endif
-                auto hash_table = make_unique<RadixHashTable>(conditions, right_typesGlobal, duckdb::JoinType::INNER,
-                                                              2 * dummy_hash_table->NextPow2_64(
-                                                                      shrinked[i].second.second -
-                                                                      shrinked[i].second.first));
-#if TIMERDETAILED
-                auto endGettingHT = std::chrono::high_resolution_clock::now();
-                gettingHashtable += endGettingHT - startGettingHT;
-#endif
-                dataRight.Reset();
-                hashes.Reset();
-                for (index_t index = shrinked[i].second.first; index < shrinked[i].second.second; index++) {
-                    index_t pos = dataRight.size();
-                    if (pos == STANDARD_VECTOR_SIZE) {
-                        // If the datachunk is full, then insert it into the hashtable
-                        // Make the hashes
-#if TIMERDETAILED
-                        auto startOrderingHash = std::chrono::high_resolution_clock::now();
-#endif
-                        hashes.Reset();
-                        ExpressionExecutor executorR(dataRight);
-                        for (index_t col = 0; col < conditions.size(); col++) {
-                            executorR.ExecuteExpression(*conditions[col].right, hashes.data[col]);
-                        }
-#if TIMERDETAILED
-                        auto endOrderingHash = std::chrono::high_resolution_clock::now();
-                        orderinghashBuild += endOrderingHash - startOrderingHash;
-#endif
-                        // Insert into the hashtable
-                        try {
-                            hash_table->Build(hashes, dataRight);
-                        } catch (ConversionException &e) {
-                            std::cout << "An exception in HT build" << std::endl;
-                        }
-                        // Reset the datachunk for next iteration
-                        dataRight.Reset();
-                        pos = dataRight.size();
-                    }
-#if TIMERDETAILED
-                    auto startExtract = std::chrono::high_resolution_clock::now();
-#endif
-                    auto data = state->right_tuples->ExtractValues(index);
-#if TIMERDETAILED
-                    auto endExtract = std::chrono::high_resolution_clock::now();
-                    extractingValBuild += endExtract - startExtract;
-                    startExtract = std::chrono::high_resolution_clock::now();
-#endif
-                    for (index_t col = 0; col < data.size(); col++) {
-                        dataRight.data[col].count += 1;
-                        dataRight.data[col].SetValue(pos, data[col]);
-                    }
-#if TIMERDETAILED
-                    endExtract = std::chrono::high_resolution_clock::now();
-                    writingDataBuild += endExtract - startExtract;
-#endif
-                }
-                // After the end of this partition insert into hashtable
-                // Reset the hashes
 
-#if TIMERDETAILED
-                auto startOrderingHash = std::chrono::high_resolution_clock::now();
-#endif
-                hashes.Reset();
-                ExpressionExecutor executorR(dataRight);
-                for (index_t j = 0; j < conditions.size(); j++) {
-                    executorR.ExecuteExpression(*conditions[j].right, hashes.data[j]);
-                }
-#if TIMERDETAILED
-                auto endOrderingHash = std::chrono::high_resolution_clock::now();
-                orderinghashBuild += endOrderingHash - startOrderingHash;
-#endif
-                // Insert into the hashtable
-                try {
-                    hash_table->Build(hashes, dataRight);
-                } catch (ConversionException &e) {
-                    std::cout << "An exception in HT build" << std::endl;
-                }
 
-#if TIMER
-                auto finishBuild = std::chrono::high_resolution_clock::now();
-                timeBuild += finishBuild - startBuild;
-                //// Up to this point, the right side is in the hashtable
+            std::vector<std::thread> threads;
+            results.resize(concurrent);
+            for (auto &r : results) {
+                r.types = expected;
+            }
 
-                // Now continue with the left side
-                auto startProbe = std::chrono::high_resolution_clock::now();
-                //startGetDChunk = std::chrono::high_resolution_clock::now();
-#endif
-                DataChunk dataLeft;
 
-                dataLeft.Initialize(left_typesGlobal);
-                hashes.Initialize(hash_table->condition_types);
-#if TIMERDETAILED
-                endGetDChunk = std::chrono::high_resolution_clock::now();
-                gettingDChunk += endGetDChunk - startGetDChunk;
-#endif
 
-#if TIMERDETAILED
-                auto startRemaining = std::chrono::high_resolution_clock::now();
-#endif
-                vector<TypeId> all;
-                for (auto &t : left_typesGlobal) {
-                    all.push_back(t);
-                }
-                for (auto &t : right_typesGlobal) {
-                    all.push_back(t);
-                }
-                result.types = all;
-#if TIMERDETAILED
-                auto endRemaining = std::chrono::high_resolution_clock::now();
-                remaining += endRemaining - startRemaining;
-#endif
-                for (index_t index = shrinked[i].first.first; index < shrinked[i].first.second; index++) {
-                    index_t pos = dataLeft.size();
-                    if (dataLeft.size() == STANDARD_VECTOR_SIZE) {
-#if TIMERDETAILED
-                        auto startOrderingHashProbe = std::chrono::high_resolution_clock::now();
-#endif
-                        hashes.Reset();
-                        ExpressionExecutor executorL(dataLeft);
-                        for (index_t j = 0; j < conditions.size(); j++) {
-                            executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
-                        }
-#if TIMERDETAILED
-                        auto endOrderingHashProbe = std::chrono::high_resolution_clock::now();
-                        orderinghashProbe += endOrderingHashProbe - startOrderingHashProbe;
-#endif
-                        try {
-                            hash_table->Probe(hashes, dataLeft, result);
-                        } catch (ConversionException &e) {
-                            std::cout << "An exception in HT probe" << std::endl;
-                        }
-                        dataLeft.Reset();
-                        pos = dataLeft.size();
-                    }
-#if TIMERDETAILED
-                    auto startExtract = std::chrono::high_resolution_clock::now();
-#endif
-                    auto data = state->left_tuples->ExtractValues(index);
-#if TIMERDETAILED
-                    auto endExtract = std::chrono::high_resolution_clock::now();
-                    extractingValProbe += endExtract - startExtract;
-                    startExtract = std::chrono::high_resolution_clock::now();
-#endif
-                    for (index_t col = 0; col < data.size(); col++) {
-                        dataLeft.data[col].count += 1;
-                        dataLeft.data[col].SetValue(pos, data[col]);
-                    }
-#if TIMERDETAILED
-                    endExtract = std::chrono::high_resolution_clock::now();
-                    writingDataProbe += endExtract - startExtract;
-#endif
-                }
-                hashes.Reset();
-#if TIMERDETAILED
-                startOrderingHash = std::chrono::high_resolution_clock::now();
-#endif
-                ExpressionExecutor executorL(dataLeft);
-                for (index_t j = 0; j < conditions.size(); j++) {
-                    executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
-                }
-#if TIMERDETAILED
-                endOrderingHash = std::chrono::high_resolution_clock::now();
-                orderinghashProbe += endOrderingHash - startOrderingHash;
-#endif
-
-                try {
-                    hash_table->Probe(hashes, dataLeft, result);
-                } catch (ConversionException &e) {
-                    std::cout << "An exception in HT probe" << std::endl;
-                }
-#if TIMER
-                auto finishProbe = std::chrono::high_resolution_clock::now();
-                timeProbe += finishProbe - startProbe;
-#endif
+            for (index_t i = 0; i < concurrent; i++) {
+                threads.push_back(std::thread(&PhysicalRadixJoin::PerformBAP, this, state, std::ref(left_typesGlobal),
+                                              std::ref(right_typesGlobal), std::ref(shrinked), std::ref(indexGlob),
+                                              std::ref(results[i]), std::ref(lock), i));
+            }
+            for(auto &t : threads) {
+                t.join();
             }
 #if TIMER
             auto finishPerfBuildAndProbe = std::chrono::high_resolution_clock::now();
@@ -494,13 +324,125 @@ void PhysicalRadixJoin::GetChunkInternal(ClientContext &context, DataChunk &chun
 #endif
     }
 
-    if (output_index < result.count) {
-        result.GetChunk(output_index).Move(chunk);
-        output_index += STANDARD_VECTOR_SIZE;
+    if (output_index < results.size()) {
+        while(results[output_index].count == 0) {
+            output_index++;
+            if(output_index >= results.size()) {
+                goto empty;
+            }
+        }
+        results[output_index].GetChunk(output_internal).Move(chunk);
+        output_internal += STANDARD_VECTOR_SIZE;
+        if(output_internal >= results[output_index].count) {
+            output_index++;
+            output_internal = 0;
+        }
     } else {
+        empty:
         DataChunk nullChunk;
         nullChunk.Move(chunk);
         state->finished = true;
+    }
+}
+
+void PhysicalRadixJoin::PerformBAP(PhysicalRadixJoinOperatorState *state, vector<TypeId> &left_typesGlobal,
+                                   vector<TypeId> &right_typesGlobal,
+                                   vector<std::pair<std::pair<index_t, index_t>, std::pair<index_t, index_t>>> &shrinked,
+                                   std::atomic<uint64_t> &indexGlob, ChunkCollection &result, std::mutex &lock, index_t threadNumber) {
+    DataChunk dataRight;
+    dataRight.Initialize(right_typesGlobal);
+    // The datachunk for the hashes of this partition
+    DataChunk hashes;
+    hashes.Initialize(dummy_hash_table->condition_types);
+    while (1) {
+        auto i = indexGlob++;
+        if (i >= shrinked.size()) {
+            break;
+        }
+        auto hash_table = make_unique<RadixHashTable>(conditions, right_typesGlobal, duckdb::JoinType::INNER, 2 *
+                                                                                                              dummy_hash_table->NextPow2_64(
+                                                                                                                      shrinked[i].second.second -
+                                                                                                                      shrinked[i].second.first));
+        dataRight.Reset();
+        hashes.Reset();
+        for (index_t index = shrinked[i].second.first; index < shrinked[i].second.second; index++) {
+            index_t pos = dataRight.size();
+            if (pos == STANDARD_VECTOR_SIZE) {
+                // If the datachunk is full, then insert it into the hashtable
+                // Make the hashes
+                hashes.Reset();
+                ExpressionExecutor executorR(dataRight);
+                for (index_t col = 0; col < conditions.size(); col++) {
+                    executorR.ExecuteExpression(*conditions[col].right, hashes.data[col]);
+                }
+                // Insert into the hashtable
+                try {
+                    hash_table->Build(hashes, dataRight);
+                } catch (ConversionException &e) {
+                    std::cout << "An exception in HT build" << std::endl;
+                }
+                // Reset the datachunk for next iteration
+                dataRight.Reset();
+                pos = dataRight.size();
+            }
+            auto data = state->right_tuples->ExtractValues(index, threadNumber);
+            for (index_t col = 0; col < data.size(); col++) {
+                dataRight.data[col].count += 1;
+                dataRight.data[col].SetValue(pos, data[col]);
+            }
+        }
+        // After the end of this partition insert into hashtable
+        // Reset the hashes
+        hashes.Reset();
+        ExpressionExecutor executorR(dataRight);
+        for (index_t j = 0; j < conditions.size(); j++) {
+            executorR.ExecuteExpression(*conditions[j].right, hashes.data[j]);
+        }
+        // Insert into the hashtable
+        try {
+            hash_table->Build(hashes, dataRight);
+        } catch (ConversionException &e) {
+            std::cout << "An exception in HT build" << std::endl;
+        }
+
+        DataChunk dataLeft;
+
+        dataLeft.Initialize(left_typesGlobal);
+        hashes.Initialize(hash_table->condition_types);
+
+        for (index_t index = shrinked[i].first.first; index < shrinked[i].first.second; index++) {
+            index_t pos = dataLeft.size();
+            if (dataLeft.size() == STANDARD_VECTOR_SIZE) {
+                hashes.Reset();
+                ExpressionExecutor executorL(dataLeft);
+                for (index_t j = 0; j < conditions.size(); j++) {
+                    executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
+                }
+                try {
+                    hash_table->Probe(hashes, dataLeft, result);
+                } catch (ConversionException &e) {
+                    std::cout << "An exception in HT probe" << std::endl;
+                }
+                dataLeft.Reset();
+                pos = dataLeft.size();
+            }
+            auto data = state->left_tuples->ExtractValues(index, threadNumber);
+            for (index_t col = 0; col < data.size(); col++) {
+                dataLeft.data[col].count += 1;
+                dataLeft.data[col].SetValue(pos, data[col]);
+            }
+        }
+        hashes.Reset();
+        ExpressionExecutor executorL(dataLeft);
+        for (index_t j = 0; j < conditions.size(); j++) {
+            executorL.ExecuteExpression(*conditions[j].left, hashes.data[j]);
+        }
+
+        try {
+            hash_table->Probe(hashes, dataLeft, result);
+        } catch (ConversionException &e) {
+            std::cout << "An exception in HT probe" << std::endl;
+        }
     }
 }
 
@@ -527,56 +469,7 @@ void PhysicalRadixJoin::FillPartitions(PhysicalRadixJoinOperatorState *state, st
     }
 }
 
-void PhysicalRadixJoin::RadixJoinPartitionWorkerLeft(PhysicalRadixJoinOperatorState *state, index_t startOfPartitions,
-                                                     index_t endOfPartitions, size_t bitmask, size_t bitMaskNextRun,
-                                                     size_t shift, size_t run, size_t partitionNumber) {
-    // Iterate over the data given to this thread
-    for (index_t toOrder = startOfPartitions; toOrder < endOfPartitions; toOrder++) {
-        auto entry = state->left_tuples->GetEntry(toOrder);
-        auto partition = ((std::get<0>(entry) & bitmask) >> shift);
-        assert(partition >= 0 && partition < state->old_left_histogram->numberOfPartitions *
-                                             state->old_left_histogram->numberOfBucketsPerPartition);
-        if (run < runs - 1) {
-            // Get the partition in the next run
-            auto partitionNextRun = (std::get<0>(entry) & bitMaskNextRun) >> (shift + numberOfBits[run]);
-            // Increment the counter for the partitionNextRun in partition
-            state->left_histogram->IncrementBucketCounter(
-                    partitionNumber * state->old_left_histogram->numberOfBucketsPerPartition + partition,
-                    partitionNextRun);
-        }
-        // Get the position where to insert from the old left histogram
-        index_t position = state->old_left_histogram->getInsertPlace(partitionNumber, partition);
-        state->left_tuplesSwap->SetEntry(entry, position);
-    }
-}
-
-void PhysicalRadixJoin::RadixJoinPartitionWorkerRight(PhysicalRadixJoinOperatorState *state, index_t startOfPartitions,
-                                                      index_t endOfPartitions, size_t bitmask, size_t bitMaskNextRun,
-                                                      size_t shift, size_t run, size_t partitionNumber) {
-    for (index_t toOrder = startOfPartitions; toOrder < endOfPartitions; toOrder++) {
-        auto entry = state->right_tuples->GetEntry(toOrder);
-        auto partition = ((std::get<0>(entry) & bitmask) >> shift);
-        assert(partition >= 0 && partition < state->old_right_histogram->numberOfPartitions *
-                                             state->old_right_histogram->numberOfBucketsPerPartition);
-        if (run < runs - 1) {
-            // Get the partition in the next run
-            auto partitionNextRun = (std::get<0>(entry) & bitMaskNextRun) >> (shift + numberOfBits[run]);
-            // Increment the counter for the partitionNextRun in partition
-            state->right_histogram->IncrementBucketCounter(
-                    partitionNumber * state->old_right_histogram->numberOfBucketsPerPartition + partition,
-                    partitionNextRun);
-        }
-        // Get the position where to insert from the old right histogram
-        index_t position = state->old_right_histogram->getInsertPlace(partitionNumber, partition);
-        state->right_tuplesSwap->SetEntry(entry, position);
-    }
-}
-
-void PhysicalRadixJoin::RadixJoinSingleThreadedLeft(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run) {
-    // Get the bitmask for this partition
-    size_t bitmask = ((1 << numberOfBits[run]) - 1) << shift;
-    // Get the bitmask for the next run
-    size_t bitMaskNextRun = ((1 << numberOfBits[run + 1]) - 1) << (shift + numberOfBits[run]);
+void PhysicalRadixJoin::RadixJoinSingleThreadedLeft(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run, index_t concurrent) {
     // move the perviously built histograms to the old histogram pointer to store them for this run
     state->old_left_histogram = std::move(state->left_histogram);
     if (run < runs - 1) {
@@ -586,33 +479,98 @@ void PhysicalRadixJoin::RadixJoinSingleThreadedLeft(PhysicalRadixJoinOperatorSta
     // Calculate the range of the left and right histograms
     state->old_left_histogram->Range();
     // Iterate over all the partitions in the old histogram (as this contains the actual information)
-    for (index_t part = 0; part < state->old_left_histogram->numberOfPartitions; part++) {
-        // Get the start of the partition
-        auto back = state->old_left_histogram->getRangeOfSuperpartition(part);
-        RadixJoinPartitionWorkerLeft(state, back.first, back.second, bitmask, bitMaskNextRun, shift, run, part);
+    atomic<index_t> partitionGlobal;
+    partitionGlobal = 0;
+    std::vector<std::thread> threads;
+    for(index_t i = 0; i< concurrent; i++) {
+        threads.push_back(std::thread(&PhysicalRadixJoin::PartitonLeftThreaded, this, state, shift, run, i, std::ref(partitionGlobal)));
+    }
+    for(auto &t : threads) {
+        t.join();
     }
 }
 
-void PhysicalRadixJoin::RadixJoinSingleThreadedRight(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run) {
+void PhysicalRadixJoin::PartitonLeftThreaded(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run, index_t threadNumber, atomic<index_t> &partitionGlobal) {
     // Get the bitmask for this partition
     size_t bitmask = ((1 << numberOfBits[run]) - 1) << shift;
     // Get the bitmask for the next run
     size_t bitMaskNextRun = ((1 << numberOfBits[run + 1]) - 1) << (shift + numberOfBits[run]);
+    while(1) {
+        auto partitionLocal = partitionGlobal++;
+        if(partitionLocal >= state->old_left_histogram->numberOfPartitions) {
+            break;
+        }
+        auto back = state->old_left_histogram->getRangeOfSuperpartition(partitionLocal);
+        // Iterate over the data given to this thread
+        for (index_t toOrder = back.first; toOrder < back.second; toOrder++) {
+            auto entry = state->left_tuples->GetEntry(toOrder, threadNumber);
+            auto partition = ((std::get<0>(entry) & bitmask) >> shift);
+            assert(partition >= 0 && partition < state->old_left_histogram->numberOfPartitions *
+                                                 state->old_left_histogram->numberOfBucketsPerPartition);
+            if (run < runs - 1) {
+                // Get the partition in the next run
+                auto partitionNextRun = (std::get<0>(entry) & bitMaskNextRun) >> (shift + numberOfBits[run]);
+                // Increment the counter for the partitionNextRun in partition
+                state->left_histogram->IncrementBucketCounter(
+                        partitionLocal * state->old_left_histogram->numberOfBucketsPerPartition + partition,
+                        partitionNextRun);
+            }
+            // Get the position where to insert from the old left histogram
+            index_t position = state->old_left_histogram->getInsertPlace(partitionLocal, partition);
+            state->left_tuplesSwap->SetEntry(entry, position);
+        }
+    }
+}
+
+void PhysicalRadixJoin::RadixJoinSingleThreadedRight(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run, index_t concurrent) {
     // move the perviously built histograms to the old histogram pointer to store them for this run
     state->old_right_histogram = std::move(state->right_histogram);
     if (run < runs - 1) {
         size_t amountOfPartitionsInNextRun = (1 << numberOfBits[run + 1]);
         state->right_histogram = make_unique<Histogram>(1 << (shift + numberOfBits[run]), amountOfPartitionsInNextRun);
     }
-    // Calculate the range of the right and right histograms
+    // Calculate the range of the left and right histograms
     state->old_right_histogram->Range();
-    {
-        // Right side
-        // Iterate over all the partitions in the old histogram (as this contains the actual information)
-        for (index_t part = 0; part < state->old_right_histogram->numberOfPartitions; part++) {
-            // Get the start of the partition
-            auto back = state->old_right_histogram->getRangeOfSuperpartition(part);
-            RadixJoinPartitionWorkerRight(state, back.first, back.second, bitmask, bitMaskNextRun, shift, run, part);
+    // Iterate over all the partitions in the old histogram (as this contains the actual information)
+    atomic<index_t> partitionGlobal;
+    partitionGlobal = 0;
+    std::vector<std::thread> threads;
+    for(index_t i = 0; i< concurrent; i++) {
+        threads.push_back(std::thread(&PhysicalRadixJoin::PartitonRightThreaded, this, state, shift, run, i, std::ref(partitionGlobal)));
+    }
+    for(auto &t : threads) {
+        t.join();
+    }
+}
+
+void PhysicalRadixJoin::PartitonRightThreaded(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run, index_t threadNumber, atomic<index_t> &partitionGlobal) {
+    // Get the bitmask for this partition
+    size_t bitmask = ((1 << numberOfBits[run]) - 1) << shift;
+    // Get the bitmask for the next run
+    size_t bitMaskNextRun = ((1 << numberOfBits[run + 1]) - 1) << (shift + numberOfBits[run]);
+    while(1) {
+        auto partitionLocal = partitionGlobal++;
+        if(partitionLocal >= state->old_right_histogram->numberOfPartitions) {
+            break;
+        }
+        auto back = state->old_right_histogram->getRangeOfSuperpartition(partitionLocal);
+        // Iterate over the data given to this thread
+        for (index_t toOrder = back.first; toOrder < back.second; toOrder++) {
+            auto entry = state->right_tuples->GetEntry(toOrder, threadNumber);
+            auto partition = ((std::get<0>(entry) & bitmask) >> shift);
+            assert(partition >= 0 && partition < state->old_right_histogram->numberOfPartitions *
+                                                 state->old_right_histogram->numberOfBucketsPerPartition);
+            if (run < runs - 1) {
+                // Get the partition in the next run
+                auto partitionNextRun = (std::get<0>(entry) & bitMaskNextRun) >> (shift + numberOfBits[run]);
+                // Increment the counter for the partitionNextRun in partition
+                state->right_histogram->IncrementBucketCounter(
+                        partitionLocal * state->old_right_histogram->numberOfBucketsPerPartition + partition,
+                        partitionNextRun);
+            }
+            // Get the position where to insert from the old right histogram
+            index_t position = state->old_right_histogram->getInsertPlace(partitionLocal, partition);
+            state->right_tuplesSwap->SetEntry(entry, position);
         }
     }
 }

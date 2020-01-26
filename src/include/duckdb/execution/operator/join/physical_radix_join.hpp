@@ -145,15 +145,19 @@ class Histogram {
 
 class EntryStorage {
     public:
-    explicit EntryStorage(size_t chunkSize_, size_t payloadLength_, std::vector<TypeId> &types_) : chunkSize(
-            chunkSize_), payloadLength(payloadLength_), types(types_), containedElements(0), tuplesOnActChunk(0),
-                                                                                                   lastChunk(0) {
+    explicit EntryStorage(size_t chunkSize_, size_t payloadLength_, std::vector<TypeId> &types_, index_t concurrent)
+            : chunkSize(chunkSize_), payloadLength(payloadLength_), types(types_), containedElements(0),
+              tuplesOnActChunk(0), lastChunk(0) {
         assert(payloadLength_ <= 4 * sizeof(uint64_t));
         auto *dataChunk = static_cast<uint8_t *>(calloc(chunkSize, 8 + payloadLength));
         data_chunks.push_back(dataChunk);
-        for (auto &t : types) {
-            Value v;
-            res.push_back(v);
+        results.resize(concurrent);
+        for (auto &r : results) {
+            for (auto &t : types) {
+                Value v;
+                v.type = t;
+                r.push_back(v);
+            }
         }
     }
 
@@ -216,7 +220,7 @@ class EntryStorage {
         }
     }
 
-    std::pair<uint64_t, std::vector<Value> &> GetEntry(size_t pos) {
+    std::pair<uint64_t, std::vector<Value> &> GetEntry(size_t pos, index_t threadNumber) {
         size_t chunkNumber = pos / chunkSize;
         size_t offset = pos % chunkSize;
         uint8_t *blockStart = data_chunks[chunkNumber];
@@ -227,7 +231,7 @@ class EntryStorage {
         for (index_t col = 0; col < types.size(); col++) {//auto &type : types) {
             auto &type = types[col];
             auto size = GetTypeIdSize(type);
-            Value &v = res[col];
+            Value &v = results[threadNumber][col];
             v.type = type;
             switch (type) {
                 // todo
@@ -256,7 +260,7 @@ class EntryStorage {
                     throw "NotImplementedYet - Default";
             }
         }
-        return {hash, res};
+        return {hash, results[threadNumber]};
     }
 
     void SetEntry(std::pair<uint64_t, std::vector<Value> &> &e, size_t pos) {
@@ -296,7 +300,7 @@ class EntryStorage {
         string s;
         s += to_string(chunkSize) + " " + to_string(payloadLength) + " " + to_string(containedElements) + "\n";
         for (size_t i = 0; i < containedElements; i++) {
-            auto[hash, values] = GetEntry(i);
+            auto[hash, values] = GetEntry(i, 0);
             s += to_string(hash) + " ";
             for (auto &v : values) {
                 s += to_string(v.value_.bigint) + " ";
@@ -310,8 +314,8 @@ class EntryStorage {
         Printer::Print(ToString());
     }
 
-    std::vector<Value> &__attribute__((always_inline)) ExtractValues(size_t pos) {
-        auto entry = GetEntry(pos);
+    std::vector<Value> &__attribute__((always_inline)) ExtractValues(size_t pos, index_t threadNumber) {
+        auto entry = GetEntry(pos, threadNumber);
         return std::get<1>(entry);
     }
 
@@ -327,7 +331,8 @@ class EntryStorage {
     // The types to enable the correct reinterpretation
     std::vector<TypeId> types;
     //
-    std::vector<Value> res;
+    //std::vector<Value> res;
+    std::vector<std::vector<Value>> results;
     // Number of the elements stored in the EntryStorage
     size_t containedElements;
     // Index of the next free entry to get faster inserts
@@ -395,7 +400,8 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
     //! How often to partition
     size_t runs = 2;
     //! The collection to store all the result
-    ChunkCollection result;
+    //ChunkCollection result;
+    std::vector<ChunkCollection> results;
     //! The output datachunk
     index_t output_index = 0;
     //! Counter of the internal datachunk
@@ -423,16 +429,19 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
     private:
     void FillPartitions(PhysicalRadixJoinOperatorState *state, std::atomic<index_t> &index);
 
-    void RadixJoinSingleThreadedLeft(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run);
+    void RadixJoinSingleThreadedLeft(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run, index_t);
 
-    void RadixJoinSingleThreadedRight(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run);
+    void RadixJoinSingleThreadedRight(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run, index_t);
 
-    void RadixJoinPartitionWorkerLeft(PhysicalRadixJoinOperatorState *state, index_t startOfPartitions,
-                                      index_t endOfPartitions, size_t bitmask, size_t bitmaskNextRun, size_t shift,
-                                      size_t run, size_t partitionNumber);
+    void PartitonLeftThreaded(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run, index_t threadNumber,
+                              atomic<index_t> &partitionGlobal);
 
-    void RadixJoinPartitionWorkerRight(PhysicalRadixJoinOperatorState *state, index_t startOfPartitions,
-                                       index_t endOfPartitions, size_t bitmask, size_t bitmaskNextRun, size_t shift,
-                                       size_t run, size_t partitionNumber);
+    void PartitonRightThreaded(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run, index_t threadNumber,
+                               atomic<index_t> &partitionGlobal);
+
+    void PerformBAP(PhysicalRadixJoinOperatorState *state, vector<TypeId> &left_typesGlobal,
+                    vector<TypeId> &right_typesGlobal,
+                    vector<std::pair<std::pair<index_t, index_t>, std::pair<index_t, index_t>>> &shrinked,
+                    std::atomic<uint64_t> &indexGlob, ChunkCollection &result, std::mutex &lock, index_t);
 };
 } // namespace duckdb
