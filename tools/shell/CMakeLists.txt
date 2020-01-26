@@ -5,6 +5,9 @@ file(GLOB
 find_library(READLINE_LIB readline)
 find_library(EDITLINE_LIB editline)
 
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
 set(HAVE_READLINE 0)
 set(HAVE_EDITLINE 0)
 
@@ -32,3 +35,4 @@ include_directories(../sqlite3_api_wrapper/include)
 
 add_executable(shell shell.c)
 target_link_libraries(shell ${LINE_LIB} sqlite3_api_wrapper)
+target_link_libraries(shell Threads::Threads)

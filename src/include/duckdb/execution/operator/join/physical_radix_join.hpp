@@ -382,7 +382,7 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
                       vector<JoinCondition> cond, JoinType join_type);
 
     ~PhysicalRadixJoin() {
-#if TIMER
+#if TIMERDETAILED
         std::cerr << "Building ht took: " << timeBuild.count() << std::endl;
         std::cerr << "Probing ht took: " << timeProbe.count() << std::endl;
 #endif
