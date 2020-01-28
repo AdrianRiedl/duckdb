@@ -29,17 +29,25 @@ class Histogram {
             histogram[i] = static_cast<index_t *>(calloc(numberOfBucketsPerPartition, sizeof(index_t)));
             partitionEnds[i] = static_cast<index_t *>(calloc(numberOfBucketsPerPartition, sizeof(index_t)));
         }
+        locks.resize(numberOfPartitions * numberOfBucketsPerPartition, nullptr);
+        for(index_t i = 0; i< numberOfPartitions * numberOfBucketsPerPartition; i++) {
+            locks[i] = new std::mutex();
+        }
     }
 
     explicit Histogram() {}
 
     ~Histogram() {
         for (index_t i = 0; i < numberOfPartitions; i++) {
-            free(histogram[i]);
-            free(partitionEnds[i]);
+            delete (histogram[i]);
+            delete (partitionEnds[i]);
         }
-        free(histogram);
-        free(partitionEnds);
+        delete (histogram);
+        delete (partitionEnds);
+
+        for(auto &t : locks) {
+            delete(t);
+        }
     }
 
     index_t numberOfPartitions;
@@ -48,12 +56,19 @@ class Histogram {
     index_t **histogram;
     index_t **partitionEnds;
 
+    std::mutex whole_lock;
+
+    std::vector<std::mutex *> locks;
+
     bool initialized;
 
 
     void __attribute__((always_inline)) IncrementBucketCounter(index_t partition, index_t bucket) {
         assert(partition < numberOfPartitions && bucket < numberOfBucketsPerPartition);
+        auto &lock = locks[partition*numberOfBucketsPerPartition + bucket];
+        lock->lock();
         histogram[partition][bucket] += 1;
+        lock->unlock();
     }
 
     string ToString() {
@@ -71,9 +86,11 @@ class Histogram {
 
     // This method returns the place, where to insert the data in the bucket.
     index_t __attribute__((always_inline)) getInsertPlace(index_t partition, index_t bucket) {
+        auto &lock = locks[partition*numberOfBucketsPerPartition + bucket];
+        lock->lock();
         auto back = getRangeAndPosition(partition, bucket);
         histogram[partition][bucket] -= 1;
-        //Print();
+        lock->unlock();
         return std::get<0>(back) + std::get<2>(back) - 1;
     }
 
@@ -86,8 +103,9 @@ class Histogram {
             std::cout << "Should never happen" << std::endl;
             Range();
         }
-        auto[start, end] = getParition(partition, bucket);
-        return {start, end, histogram[partition][bucket]};
+        auto back = getParition(partition, bucket);
+        auto pos = histogram[partition][bucket];
+        return {std::get<0>(back), std::get<1>(back), pos};
     }
 
     // This method returns the start index and the end index of the given bucket in the given partition
@@ -169,54 +187,59 @@ class EntryStorage {
 
     // We need the hashes of the tuples and the data. The histogram is filled before.
     void insert(unique_ptr<StaticVector<uint64_t>> &hashes, DataChunk &chunk) {
-        uint8_t *lastChunkPointer = data_chunks[lastChunk];
+        index_t chunkFollow = 0;
         // set the pointer to the newest writing position
+        insertLock.lock();
+        uint8_t *lastChunkPointer = data_chunks[lastChunk];
+        index_t freeOldEntryStorage = chunkSize - tuplesOnActChunk;
+        //index_t startOffset = tuplesOnActChunk;
         lastChunkPointer += tuplesOnActChunk * (8 + payloadLength);
+        tuplesOnActChunk += chunk.size();
+        containedElements += chunk.size();
+        index_t followTuples = 0;
+        if (tuplesOnActChunk > chunkSize) {
+            auto *dataChunk = static_cast<uint8_t *>(calloc(chunkSize, 8 + payloadLength));
+            data_chunks.push_back(dataChunk);
+            tuplesOnActChunk %= chunkSize;
+            followTuples = tuplesOnActChunk;
+            lastChunk = data_chunks.size() - 1;
+            chunkFollow = lastChunk;
+        }
+        insertLock.unlock();
+        //index_t insertIndex = startOffset;
         for (index_t chunkIterator = 0; chunkIterator < chunk.size(); chunkIterator++) {
-            // First check, if there is still some space left to put the entry
-            if (tuplesOnActChunk == chunkSize) {
-                // In this case the actual chunk is full
-                // Allocate a new chunk for the data
-                auto *dataChunk = static_cast<uint8_t *>(calloc(chunkSize, 8 + payloadLength));
-                data_chunks.push_back(dataChunk);
-                tuplesOnActChunk = 0;
-                lastChunk = data_chunks.size() - 1;
-                lastChunkPointer = data_chunks[lastChunk];
-                lastChunkPointer += tuplesOnActChunk * (8 + payloadLength);
+            if (freeOldEntryStorage == 0) {
+                lastChunkPointer = data_chunks[chunkFollow];
+                freeOldEntryStorage = followTuples;
             }
             auto hash = hashes->GetValue(chunkIterator);
             // set the hashvalue
             memcpy(lastChunkPointer, &hash.value_.hash, 8);
             lastChunkPointer += 8;
-            //lastChunkPointer->hash = hash.value_.hash;
             // set the values
             for (index_t col = 0; col < chunk.column_count; col++) {
                 auto value = chunk.GetVector(col).GetValue(chunkIterator);
                 auto type = types[col];
                 auto size = GetTypeIdSize(type);
                 switch (type) {
-                    // todo
                     case TypeId::SMALLINT: {
                         memcpy(lastChunkPointer, &value.value_.smallint, size);
-                        lastChunkPointer += size;
                         break;
                     }
                     case TypeId::INTEGER: {
                         memcpy(lastChunkPointer, &value.value_.integer, size);
-                        lastChunkPointer += size;
                         break;
                     }
                     case TypeId::BIGINT: {
                         memcpy(lastChunkPointer, &value.value_.bigint, size);
-                        lastChunkPointer += size;
                         break;
                     }
                     default:
                         throw "NotImplementedYet - Default";
                 }
+                lastChunkPointer += size;
             }
-            tuplesOnActChunk++;
-            containedElements++;
+            freeOldEntryStorage--;
         }
     }
 
@@ -300,9 +323,9 @@ class EntryStorage {
         string s;
         s += to_string(chunkSize) + " " + to_string(payloadLength) + " " + to_string(containedElements) + "\n";
         for (size_t i = 0; i < containedElements; i++) {
-            auto[hash, values] = GetEntry(i, 0);
-            s += to_string(hash) + " ";
-            for (auto &v : values) {
+            auto back = GetEntry(i, 0);
+            s += to_string(std::get<0>(back)) + " ";
+            for (auto &v : std::get<1>(back)) {
                 s += to_string(v.value_.bigint) + " ";
             }
             s += "\n";
@@ -342,6 +365,8 @@ class EntryStorage {
 
     // Collection of the datachunks where I store the Entrys to
     std::vector<uint8_t *> data_chunks;
+
+    std::mutex insertLock;
 };
 
 class PhysicalRadixJoinOperatorState : public PhysicalOperatorState {
@@ -439,9 +464,23 @@ class PhysicalRadixJoin : public PhysicalComparisonJoin {
     void PartitonRightThreaded(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run, index_t threadNumber,
                                atomic<index_t> &partitionGlobal);
 
+    void
+    CollLeft(PhysicalRadixJoinOperatorState *state, atomic<bool> &opDone, std::mutex &opLock, ClientContext &context,
+             size_t &hash_bit_mask, unique_ptr<PhysicalOperatorState> &left_state);
+
+    void
+    CollRight(PhysicalRadixJoinOperatorState *state, atomic<bool> &opDone, std::mutex &opLock, ClientContext &context,
+             size_t &hash_bit_mask, unique_ptr<PhysicalOperatorState> &left_state);
+
     void PerformBAP(PhysicalRadixJoinOperatorState *state, vector<TypeId> &left_typesGlobal,
                     vector<TypeId> &right_typesGlobal,
                     vector<std::pair<std::pair<index_t, index_t>, std::pair<index_t, index_t>>> &shrinked,
                     std::atomic<uint64_t> &indexGlob, ChunkCollection &result, std::mutex &lock, index_t);
+
+    void PartitonRightThreadedRun0(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run,
+                                                      index_t threadNumber, atomic<index_t> &partitionGlobal, size_t morselSize);
+
+    void PartitonLeftThreadedRun0(PhysicalRadixJoinOperatorState *state, size_t shift, size_t run,
+                                   index_t threadNumber, atomic<index_t> &partitionGlobal, size_t morselSize);
 };
 } // namespace duckdb
