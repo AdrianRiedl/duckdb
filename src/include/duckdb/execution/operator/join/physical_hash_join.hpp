@@ -30,9 +30,17 @@ public:
 	void GetChunkInternal(ClientContext &context, DataChunk &chunk, PhysicalOperatorState *state) override;
 	unique_ptr<PhysicalOperatorState> GetOperatorState() override;
 
+    void BuildHashTable(std::mutex &opLock, std::mutex &hashLock, atomic<bool> &opDone,
+                                          ClientContext &context, unique_ptr<PhysicalOperatorState> &right_state);
+    void ProbeHashTable(std::mutex &opLock, index_t thread_number, ChunkCollection &result,
+                        atomic<bool> &opDone, ClientContext &context,
+                        unique_ptr<PhysicalOperatorState> &left_state);
 
     std::chrono::duration<double> timeBuild;
     std::chrono::duration<double> timeProbe;
+    std::vector<ChunkCollection> results;
+    index_t output_index = 0;
+    index_t output_internal = 0;
 };
 
 class PhysicalHashJoinOperatorState : public PhysicalOperatorState {
