@@ -30,6 +30,7 @@ public:
 	// Flag if recurring table is referenced, if not we do not copy ht into ColumnDataCollection
 	bool ref_recurring;
 	bool union_all;
+	// On this the next recursive run is calculated
 	shared_ptr<ColumnDataCollection> working_table;
 	shared_ptr<MetaPipeline> recursive_meta_pipeline;
 

@@ -33,7 +33,7 @@ PhysicalRecursiveCTE::~PhysicalRecursiveCTE() {
 class RecursiveCTEState : public GlobalSinkState {
 public:
 	explicit RecursiveCTEState(ClientContext &context, const PhysicalRecursiveCTE &op)
-	    : intermediate_table(context, op.GetTypes()), new_groups(STANDARD_VECTOR_SIZE) {
+	    : intermediate_table(context, op.GetTypes()), delta(context, op.GetTypes()), new_groups(STANDARD_VECTOR_SIZE) {
 
 		vector<BoundAggregateExpression *> payload_aggregates_ptr;
 		for (idx_t i = 0; i < op.payload_aggregates.size(); i++) {
@@ -49,6 +49,7 @@ public:
 
 	mutex intermediate_table_lock;
 	ColumnDataCollection intermediate_table;
+	ColumnDataCollection delta;
 	ColumnDataScanState scan_state;
 	bool initialized = false;
 	bool finished_scan = false;
@@ -95,10 +96,10 @@ SinkResultType PhysicalRecursiveCTE::Sink(ExecutionContext &context, DataChunk &
 		if (!union_all) {
 			idx_t match_count = ProbeHT(chunk, gstate);
 			if (match_count > 0) {
-				gstate.intermediate_table.Append(chunk);
+				gstate.delta.Append(chunk);
 			}
 		} else {
-			gstate.intermediate_table.Append(chunk);
+			gstate.delta.Append(chunk);
 		}
 	} else {
 		// Split incoming DataChunk into payload and keys
@@ -179,13 +180,30 @@ SourceResultType PhysicalRecursiveCTE::GetData(ExecutionContext &context, DataCh
 				}
 			}
 
-			working_table->Reset();
-			working_table->Combine(gstate.intermediate_table);
-			// and we clear the intermediate table
+			// the process of handling the recursion
+			// we add the new tuples to delta in the sink
+			// then we move them to working table for the next recursion and reset delta
+			// then we run the recursion
+			// after one recursive step, delta has the new tuples,
+			// now we add working table to intermediate table (to store the old delta)
+
 			gstate.finished_scan = false;
 			gstate.intermediate_table.Reset();
-			// now we need to re-execute all of the pipelines that depend on the recursion
-			ExecuteRecursivePipelines(context);
+			idx_t size = 0;
+			do {
+				size = gstate.intermediate_table.Count();
+
+				// get the old delta into the working table and reset the delta table
+				working_table->Reset();
+				working_table->Combine(gstate.delta);
+				gstate.delta.Reset();
+
+				// now we need to re-execute all of the pipelines that depend on the recursion
+				ExecuteRecursivePipelines(context);
+
+				gstate.intermediate_table.Combine(*working_table);
+				// iterate as long as either no new input came or the limit is exceeded
+			} while (gstate.intermediate_table.Count() != size);
 
 			// check if we obtained any results
 			// if not, we are done
