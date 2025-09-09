@@ -1501,6 +1501,28 @@ Value ThreadsSetting::GetSetting(const ClientContext &context) {
 }
 
 //===----------------------------------------------------------------------===//
+// Recursion
+//===----------------------------------------------------------------------===//
+void RecursionSetting::SetGlobal(DatabaseInstance *db, DBConfig &config, const Value &input) {
+	auto new_val = input.GetValue<int64_t>();
+	if (new_val < 1) {
+		throw SyntaxException("Must have at least one run!");
+	}
+	auto maximum_recursive_runs = NumericCast<idx_t>(new_val);
+	config.options.maximum_recursive_runs = maximum_recursive_runs;
+}
+
+void RecursionSetting::ResetGlobal(DatabaseInstance *db, DBConfig &config) {
+	idx_t maximum_recursive_runs = 1;
+	config.options.maximum_recursive_runs = maximum_recursive_runs;
+}
+
+Value RecursionSetting::GetSetting(const ClientContext &context) {
+	auto &config = DBConfig::GetConfig(context);
+	return Value::BIGINT(NumericCast<int64_t>(config.options.maximum_recursive_runs));
+}
+
+//===----------------------------------------------------------------------===//
 // Username
 //===----------------------------------------------------------------------===//
 void UsernameSetting::SetGlobal(DatabaseInstance *db, DBConfig &config, const Value &input) {

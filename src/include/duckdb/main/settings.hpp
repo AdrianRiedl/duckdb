@@ -1223,6 +1223,16 @@ struct ThreadsSetting {
 	static Value GetSetting(const ClientContext &context);
 };
 
+struct RecursionSetting {
+	using RETURN_TYPE = int64_t;
+	static constexpr const char *Name = "recursionruns";
+	static constexpr const char *Description = "The number of maximum runs to gather in the recursion.";
+	static constexpr const char *InputType = "BIGINT";
+	static void SetGlobal(DatabaseInstance *db, DBConfig &config, const Value &parameter);
+	static void ResetGlobal(DatabaseInstance *db, DBConfig &config);
+	static Value GetSetting(const ClientContext &context);
+};
+
 struct UsernameSetting {
 	using RETURN_TYPE = string;
 	static constexpr const char *Name = "username";

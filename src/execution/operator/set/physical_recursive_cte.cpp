@@ -10,6 +10,7 @@
 #include "duckdb/parallel/pipeline.hpp"
 #include "duckdb/parallel/task_scheduler.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
+#include "duckdb/main/settings.hpp"
 
 #include <utility>
 
@@ -190,6 +191,7 @@ SourceResultType PhysicalRecursiveCTE::GetData(ExecutionContext &context, DataCh
 			gstate.finished_scan = false;
 			gstate.intermediate_table.Reset();
 			idx_t size = 0;
+			idx_t limit = RecursionSetting::GetSetting(context.client).GetValue<int64_t>();
 			do {
 				size = gstate.intermediate_table.Count();
 
@@ -203,7 +205,7 @@ SourceResultType PhysicalRecursiveCTE::GetData(ExecutionContext &context, DataCh
 
 				gstate.intermediate_table.Combine(*working_table);
 				// iterate as long as either no new input came or the limit is exceeded
-			} while (gstate.intermediate_table.Count() != size);
+			} while (gstate.intermediate_table.Count() != size && gstate.intermediate_table.Count() < limit);
 
 			// check if we obtained any results
 			// if not, we are done
